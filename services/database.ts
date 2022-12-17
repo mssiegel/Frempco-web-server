@@ -160,8 +160,8 @@ export function unpairStudentChat(
   const stud1 = getStudent(student1.socketId);
   const stud2 = getStudent(student2.socketId);
 
-  stud1.socket.to(chatId).emit('peer left chat', {});
-  stud2.socket.to(chatId).emit('peer left chat', {});
+  stud1.socket.to(chatId).emit('teacher ended chat', {});
+  stud2.socket.to(chatId).emit('teacher ended chat', {});
 
   deleteChat(chatId, stud1, stud2);
 
