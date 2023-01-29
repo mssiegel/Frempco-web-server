@@ -19,7 +19,7 @@ Frempco lets teachers pair up classmates for text-based improvised chats. Studen
 
 1. `npm install`
 2. `npm run dev`
-3. Download the [frontend repo](https://github.com/mssiegel/frempco-client) and run it separately
+3. Download the [frontend repo](https://github.com/Frempco/web-client) and run it separately
 
 ## Git workflow
 
