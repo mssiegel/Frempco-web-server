@@ -175,7 +175,7 @@ export function unpairStudentChat(
   }
 }
 
-export function sendMessage(
+export function studentSendsMessage(
   character: string,
   message: string,
   socket: Socket,
@@ -184,7 +184,7 @@ export function sendMessage(
   const chatId = chatIds[socketId];
 
   // send message to other student
-  socket.to(chatId).emit('chat message', { character, message });
+  socket.to(chatId).emit('student sent message', { character, message });
   // send message to teacher
   const classroomName = students[socketId].classroomName;
   const classroom = getClassroom(classroomName);
@@ -192,8 +192,21 @@ export function sendMessage(
   if (classroom) {
     socket
       .to(classroom.teacherSocketId)
-      .emit('student chat message', { character, message, socketId, chatId });
+      .emit('teacher listens to student message', {
+        character,
+        message,
+        socketId,
+        chatId,
+      });
   }
+}
+
+export function teacherSendsMessage(
+  message: string,
+  socket: Socket,
+  chatId: ChatId,
+) {
+  socket.to(chatId).emit('teacher sent message', { message });
 }
 
 export function sendUserTyping(character: string, socket: Socket) {
