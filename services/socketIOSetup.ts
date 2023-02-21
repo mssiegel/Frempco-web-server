@@ -11,7 +11,8 @@ import {
   remStudentFromClassroom,
   unpairStudentChat,
   pairStudents,
-  sendMessage,
+  studentSendsMessage,
+  teacherSendsMessage,
   sendUserTyping,
 } from './database.js';
 
@@ -82,13 +83,21 @@ export default function socketIOSetup(server) {
 
     // New chat message sent from one student to their peer
     socket.on(
-      'chat message',
+      'student sent message',
       errorCatcher(({ character, message }) => {
-        sendMessage(character, message, socket);
+        studentSendsMessage(character, message, socket);
       }),
     );
 
-    // New chat message sent from one student to their peer
+    // New chat message sent from teacher to students
+    socket.on(
+      'teacher sent message',
+      errorCatcher(({ message, chatId }) => {
+        teacherSendsMessage(message, socket, chatId);
+      }),
+    );
+
+    // Informs student when their peer is typing
     socket.on(
       'student typing',
       errorCatcher(({ character }) => {
