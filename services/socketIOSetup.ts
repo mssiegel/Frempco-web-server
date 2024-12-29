@@ -84,8 +84,8 @@ export default function socketIOSetup(server) {
     // New chat message sent from one student to their peer
     socket.on(
       'student sent message',
-      errorCatcher(({ character, message }) => {
-        studentSendsMessage(character, message, socket);
+      errorCatcher(({ message }) => {
+        studentSendsMessage(message, socket);
       }),
     );
 
@@ -100,8 +100,8 @@ export default function socketIOSetup(server) {
     // Informs student when their peer is typing
     socket.on(
       'student typing',
-      errorCatcher(({ character }) => {
-        sendUserTyping(character, socket);
+      errorCatcher(() => {
+        sendUserTyping(socket);
       }),
     );
   });

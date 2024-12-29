@@ -29,6 +29,8 @@ export function addClassroom(classroomName: string, socket: Socket) {
 export function deleteClassroom(teacher) {
   delete classrooms[teacher.classroomName];
   delete teachers[teacher.socket.id];
+  // Does not delete the students from the classroom. This lets the students
+  // continue chatting if the teacher accidentally closes the website early.
 }
 
 export function getTeacher(socketId: string) {
@@ -175,16 +177,12 @@ export function unpairStudentChat(
   }
 }
 
-export function studentSendsMessage(
-  character: string,
-  message: string,
-  socket: Socket,
-) {
+export function studentSendsMessage(message: string, socket: Socket) {
   const socketId = socket.id;
   const chatId = chatIds[socketId];
 
   // send message to other student
-  socket.to(chatId).emit('student sent message', { character, message });
+  socket.to(chatId).emit('student sent message', { message });
   // send message to teacher
   const classroomName = students[socketId].classroomName;
   const classroom = getClassroom(classroomName);
@@ -193,7 +191,6 @@ export function studentSendsMessage(
     socket
       .to(classroom.teacherSocketId)
       .emit('teacher listens to student message', {
-        character,
         message,
         socketId,
         chatId,
@@ -209,7 +206,7 @@ export function teacherSendsMessage(
   socket.to(chatId).emit('teacher sent message', { message });
 }
 
-export function sendUserTyping(character: string, socket: Socket) {
+export function sendUserTyping(socket: Socket) {
   const chatId = chatIds[socket.id];
-  socket.to(chatId).emit('peer is typing', { character });
+  socket.to(chatId).emit('peer is typing');
 }
