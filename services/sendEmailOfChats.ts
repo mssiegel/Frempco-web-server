@@ -61,6 +61,9 @@ function createHtmlBody(chats: StudentChat[]) {
     }
     chatCount++;
   }
+
+  body +=
+    '<div style="margin-top: 32px; text-align: center; font-size 16:px">All converations in this email were created by students on <a href="https://www.frempco.com/">Frempco</a>.</div>';
   return body;
 }
 
@@ -94,5 +97,7 @@ function createTextBody(chats: StudentChat[]) {
     }
     chatCount++;
   }
+  body +=
+    '\n\nAll converations in this email were created by students on Frempco.';
   return body;
 }

@@ -6,6 +6,8 @@ export interface Classrooms {
     students: SocketId[];
     // We track the chats so we can email them to the teacher at the end of class
     chats: ChatConversation | {};
+    // The teacher's email address which will be sent a copy of all chats.
+    email: string;
   };
 }
 

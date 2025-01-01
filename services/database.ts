@@ -27,6 +27,7 @@ export function addClassroom(classroomName: string, socket: Socket) {
     teacherSocketId: socket.id,
     students: [],
     chats: {},
+    email: '',
   };
 }
 
@@ -50,11 +51,12 @@ async function emailChatsToTeacher(teacherSocketId: string) {
   const classroom = getClassroom(classroomName);
   const chats = Object.values(classroom.chats);
 
-  // TODO: Let teacher change this value on the front end.
-  const recipientEmail = 'siegel.moshes@gmail.com';
+  if (chats.length === 0 || classroom.email.length === 0) return;
+  await sendEmailOfChats(chats, classroom.email);
+}
 
-  if (chats.length === 0 || !recipientEmail) return;
-  await sendEmailOfChats(chats, recipientEmail);
+export function setClassroomEmail(classroomName: string, email: string) {
+  classrooms[classroomName].email = email;
 }
 
 export function getTeacher(socketId: string) {
