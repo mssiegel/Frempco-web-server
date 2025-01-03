@@ -4,6 +4,10 @@ export interface Classrooms {
   [classroomName: string]: {
     teacherSocketId: SocketId;
     students: SocketId[];
+    // We track the chats so we can email them to the teacher at the end of class
+    chats: Record<ChatId, StudentChat> | {};
+    // The teacher's email address which will be sent a copy of all chats.
+    email: string;
   };
 }
 
@@ -32,3 +36,16 @@ export interface ChatIds {
 export type ChatId = '${SocketId}#${SocketId}';
 
 type SocketId = string;
+
+export interface StudentChat {
+  studentPair: [StudentId, StudentId];
+  messages: ChatMessage[];
+}
+
+interface StudentId {
+  realName: string;
+  character: string;
+  socketId: SocketId;
+}
+
+export type ChatMessage = ['student1' | 'student2' | 'teacher', string];
