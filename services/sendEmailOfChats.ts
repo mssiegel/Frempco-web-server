@@ -7,8 +7,8 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false, // true for port 465, false for other ports
   auth: {
-    user: 'siegel.moshes@gmail.com',
-    pass: 'lmpl dhww upgy rlbo',
+    user: 'NoReplyFrempco@gmail.com',
+    pass: process.env.EMAIL_APP_PASSWORD,
   },
 });
 
@@ -16,12 +16,25 @@ export async function sendEmailOfChats(
   chats: StudentChat[],
   recipientEmail: string,
 ) {
+  if (!process.env.EMAIL_APP_PASSWORD) {
+    return console.error(
+      'EMAIL_APP_PASSWORD not found in environment variables',
+    );
+  }
+
+  const currentTimestampInSeconds = Math.floor(Date.now() / 1000);
+
   const info = await transporter.sendMail({
-    from: '"Moshe Siegel" <siegel.moshes@gmail.com>', // sender address
-    to: recipientEmail, // list of receivers
-    subject: 'Frempco chats', // Subject line
-    text: createTextBody(chats), // plain text body, used by old email clients that don't support html
-    html: createHtmlBody(chats), // html body, used by modern email clients
+    // sender address
+    from: '"Frempco No Reply" <NoReplyFrempco@gmail.com>',
+    // list of receivers
+    to: recipientEmail,
+    // Subject line, we add the timestamp to make the subject line unique
+    subject: `Frempco chats ${currentTimestampInSeconds}`,
+    // plain text body, used by old email clients that don't support html
+    text: createTextBody(chats),
+    // html body, used by modern email clients
+    html: createHtmlBody(chats),
   });
 
   console.log('Email sent: %s', info.messageId);
@@ -63,7 +76,9 @@ function createHtmlBody(chats: StudentChat[]) {
   }
 
   body +=
-    '<div style="margin-top: 32px; text-align: center; font-size 16:px">All converations in this email were created by students on <a href="https://www.frempco.com/">Frempco</a>.</div>';
+    '<div style="margin-top: 32px; text-align: center; font-size: 16px">-----</div>';
+  body +=
+    '<div style="text-align: center; font-size: 16px">All converations in this email were created by students on <a href="https://www.frempco.com/">Frempco</a>.</div>';
   return body;
 }
 
@@ -97,7 +112,7 @@ function createTextBody(chats: StudentChat[]) {
     }
     chatCount++;
   }
-  body +=
-    '\n\nAll converations in this email were created by students on Frempco.';
+  body += '\n\n-----\n';
+  body += 'All converations in this email were created by students on Frempco.';
   return body;
 }

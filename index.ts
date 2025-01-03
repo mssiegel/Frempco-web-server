@@ -1,6 +1,8 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import 'dotenv/config';
+
 import { createServer } from 'http';
 
 import corsOptions from './services/corsOptions.js';

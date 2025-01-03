@@ -18,8 +18,9 @@ Frempco lets teachers pair up classmates for text-based improvised chats. Studen
 ## Setup instructions
 
 1. `npm install`
-2. `npm run dev`
-3. Download the [frontend repo](https://github.com/Frempco/web-client) and run it separately
+2. Create a new `.env` file based on `.env.template` and put in your own values
+3. `npm run dev`
+4. Download the [frontend repo](https://github.com/Frempco/web-client) and run it separately
 
 ## Git workflow
 
