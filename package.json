@@ -17,6 +17,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.17.1",
     "helmet": "^4.6.0",
+    "nanoid": "^3.3.11",
     "nodemailer": "^6.9.16",
     "socket.io": "^4.3.2"
   },

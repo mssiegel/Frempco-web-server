@@ -33,7 +33,7 @@ export interface ChatIds {
   [socketId: SocketId]: ChatId;
 }
 
-export type ChatId = '${SocketId}#${SocketId}';
+export type ChatId = 'nanoid#${SocketId}#${SocketId}';
 
 type SocketId = string;
 
