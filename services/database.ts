@@ -1,4 +1,5 @@
 import { Socket } from 'socket.io';
+import { nanoid } from 'nanoid/non-secure';
 
 import {
   Classrooms,
@@ -141,7 +142,9 @@ export function pairStudents(studentPairs, teacherSocket: Socket) {
   for (const [tempStudent1, tempStudent2] of studentPairs) {
     const student1 = getStudent(tempStudent1.socketId);
     const student2 = getStudent(tempStudent2.socketId);
-    const chatId = `${student1.socket.id}#${student2.socket.id}` as ChatId;
+    const chatId = `${nanoid(5)}#${student1.socket.id}#${
+      student2.socket.id
+    }` as ChatId;
 
     // join the students to a chat
     student1.socket.join(chatId);
