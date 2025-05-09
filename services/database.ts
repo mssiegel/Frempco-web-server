@@ -15,7 +15,6 @@ import {
   SoloChatMessage,
 } from './types';
 import { sendEmailOfChats } from './sendEmailOfChats.js';
-import { send } from 'process';
 
 const classrooms: Classrooms = {};
 const teachers: Teachers = {};
@@ -57,11 +56,12 @@ async function emailChatsToTeacher(teacherSocketId: string) {
   const classroomName = teachers[teacherSocketId].classroomName;
   const classroom = getClassroom(classroomName);
   const chats = Object.values(classroom.chats);
+  const soloChats = Object.values(classroom.soloChats);
 
-  if (chats.length === 0 || classroom.email.length === 0) return;
+  if ((chats.length === 0 && soloChats.length === 0) || classroom.email === '')
+    return;
 
-  // TODO: include the solo chats in the email to the teacher
-  await sendEmailOfChats(chats, classroom.email);
+  await sendEmailOfChats(chats, soloChats, classroom.email);
 }
 
 export function setClassroomEmail(classroomName: string, email: string) {
