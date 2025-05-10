@@ -1,4 +1,5 @@
 import { Socket } from 'socket.io';
+import { nanoid } from 'nanoid/non-secure';
 
 import {
   Classrooms,
@@ -7,7 +8,10 @@ import {
   Student,
   ChatIds,
   ChatId,
+  StudentChat,
+  ChatMessage,
 } from './types';
+import { sendEmailOfChats } from './sendEmailOfChats.js';
 
 export const classrooms: Classrooms = {};
 export const teachers: Teachers = {};
@@ -23,12 +27,37 @@ export function addClassroom(classroomName: string, socket: Socket) {
   classrooms[classroomName] = {
     teacherSocketId: socket.id,
     students: [],
+    chats: {},
+    email: '',
   };
 }
 
-export function deleteClassroom(teacher) {
+export async function deleteClassroom(teacher) {
+  // Email the chats to the teacher before deleting the classroom
+  await emailChatsToTeacher(teacher.socket.id);
+
   delete classrooms[teacher.classroomName];
   delete teachers[teacher.socket.id];
+
+  // Does not delete the students from their chats. This lets the students
+  // continue chatting even after the teacher closes the website. Additional
+  // chat messages sent after the teacher deletes the classrom will not be
+  // emailed to the teacher.
+}
+
+async function emailChatsToTeacher(teacherSocketId: string) {
+  // Sends all chats to the teacher, even those which have already ended.
+
+  const classroomName = teachers[teacherSocketId].classroomName;
+  const classroom = getClassroom(classroomName);
+  const chats = Object.values(classroom.chats);
+
+  if (chats.length === 0 || classroom.email.length === 0) return;
+  await sendEmailOfChats(chats, classroom.email);
+}
+
+export function setClassroomEmail(classroomName: string, email: string) {
+  classrooms[classroomName].email = email;
 }
 
 export function getTeacher(socketId: string) {
@@ -107,12 +136,17 @@ export function remStudentFromClassroom(student: Student) {
 }
 
 export function pairStudents(studentPairs, teacherSocket: Socket) {
+  const classroomName = teachers[teacherSocket.id].classroomName;
+  const classroom = getClassroom(classroomName);
+
   for (const [tempStudent1, tempStudent2] of studentPairs) {
     const student1 = getStudent(tempStudent1.socketId);
     const student2 = getStudent(tempStudent2.socketId);
-    const chatId = `${student1.socket.id}#${student2.socket.id}` as ChatId;
+    const chatId = `${nanoid(5)}#${student1.socket.id}#${
+      student2.socket.id
+    }` as ChatId;
 
-    // join them to a chat
+    // join the students to a chat
     student1.socket.join(chatId);
     student2.socket.join(chatId);
     // map their socket ids to the chat
@@ -137,6 +171,25 @@ export function pairStudents(studentPairs, teacherSocket: Socket) {
       chatId,
       studentPair: [tempStudent1, tempStudent2],
     });
+
+    // add a chat object to the classroom object. This will let us store a
+    // record of the chat messages.
+    const studentChat: StudentChat = {
+      studentPair: [
+        {
+          realName: student1.realName,
+          character: tempStudent1.character,
+          socketId: student1.socket.id,
+        },
+        {
+          realName: student2.realName,
+          character: tempStudent2.character,
+          socketId: student2.socket.id,
+        },
+      ],
+      messages: [],
+    };
+    classroom.chats[chatId] = studentChat;
   }
 }
 
@@ -149,6 +202,10 @@ function deleteChat(chatId: ChatId, student1: Student, student2: Student) {
 
   delete chatIds[student1.socket.id];
   delete chatIds[student2.socket.id];
+
+  // this function does not delete the chat from the classroom object. This
+  // ensures the teacher will get emailed all chats, even those which have
+  // already ended.
 }
 
 export function unpairStudentChat(
@@ -175,16 +232,12 @@ export function unpairStudentChat(
   }
 }
 
-export function studentSendsMessage(
-  character: string,
-  message: string,
-  socket: Socket,
-) {
+export function studentSendsMessage(message: string, socket: Socket) {
   const socketId = socket.id;
   const chatId = chatIds[socketId];
 
   // send message to other student
-  socket.to(chatId).emit('student sent message', { character, message });
+  socket.to(chatId).emit('student sent message', { message });
   // send message to teacher
   const classroomName = students[socketId].classroomName;
   const classroom = getClassroom(classroomName);
@@ -193,11 +246,16 @@ export function studentSendsMessage(
     socket
       .to(classroom.teacherSocketId)
       .emit('teacher listens to student message', {
-        character,
         message,
         socketId,
         chatId,
       });
+
+    const chat: StudentChat = classroom.chats[chatId];
+    const messageAuthor =
+      chat.studentPair[0].socketId === socketId ? 'student1' : 'student2';
+    const chatMessage: ChatMessage = [messageAuthor, message];
+    chat.messages.push(chatMessage);
   }
 }
 
@@ -207,9 +265,15 @@ export function teacherSendsMessage(
   chatId: ChatId,
 ) {
   socket.to(chatId).emit('teacher sent message', { message });
+
+  const classroomName = teachers[socket.id].classroomName;
+  const classroom = getClassroom(classroomName);
+  const chat: StudentChat = classroom.chats[chatId];
+  const chatMessage: ChatMessage = ['teacher', message];
+  chat.messages.push(chatMessage);
 }
 
-export function sendUserTyping(character: string, socket: Socket) {
+export function sendUserTyping(socket: Socket) {
   const chatId = chatIds[socket.id];
-  socket.to(chatId).emit('peer is typing', { character });
+  socket.to(chatId).emit('peer is typing');
 }
