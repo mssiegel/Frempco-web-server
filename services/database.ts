@@ -15,6 +15,7 @@ import {
   SoloChatMessage,
 } from './types';
 import { sendEmailOfChats } from './sendEmailOfChats.js';
+import { sendMessageToGeminiChatbot } from './gemini.js';
 
 const classrooms: Classrooms = {};
 const teachers: Teachers = {};
@@ -306,10 +307,9 @@ export function startSoloMode(
   const classroom = getClassroom(classroomName);
   const realName = getStudent(studentSocketId).realName;
 
-  // TODO: make api request to get the real AI chatbot messages
-  const messages = [
-    ['chatbot', 'So brave of you to come today'],
-    ['chatbot', 'What is on your mind?'],
+  const chatbotWelcomeMessages = [
+    ['chatbot', 'Hi there! 👋'],
+    ['chatbot', 'So, um, who are you roleplaying as today? 😊'],
   ] as SoloChatMessage[];
 
   // Add a solo chat object to the classroom object to store a record of the
@@ -320,7 +320,7 @@ export function startSoloMode(
       character: characterName,
       socketId: studentSocketId,
     },
-    messages,
+    messages: chatbotWelcomeMessages,
   };
   const soloChatId = `${nanoid(5)}#${studentSocketId}` as ChatId;
   classroom.soloChats[soloChatId] = studentChat;
@@ -331,16 +331,16 @@ export function startSoloMode(
   // Inform the student
   student.socket.emit('solo mode: chat started', {
     character: characterName,
-    messages,
+    messages: chatbotWelcomeMessages,
   });
 
-  return { soloChatId, messages };
+  return { soloChatId, messages: chatbotWelcomeMessages };
 }
 
-export function soloModeStudentSendsMessage(
+export async function soloModeStudentSendsMessage(
   message: string,
   studentSocket: Socket,
-): SoloChatMessage[] {
+): Promise<SoloChatMessage[]> {
   const socketId = studentSocket.id;
   const soloChatId = soloChatIds[socketId];
 
@@ -357,11 +357,9 @@ export function soloModeStudentSendsMessage(
     );
   }
 
-  // TODO: make api request to get the real AI chatbot messages
-  const chatbotReplyMessages = [
-    ['chatbot', 'Thank you for the additional info.'],
-    ['chatbot', 'Please tell me more'],
-  ] as SoloChatMessage[];
+  const upToDateMessages = classroom.soloChats[soloChatId].messages;
+  const messageHistory = JSON.stringify(upToDateMessages);
+  const chatbotReplyMessages = await sendMessageToGeminiChatbot(messageHistory);
 
   if (classroom) {
     // Send chatbot's reply messages to teacher

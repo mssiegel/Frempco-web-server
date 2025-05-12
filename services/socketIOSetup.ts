@@ -125,8 +125,8 @@ export default function socketIOSetup(server) {
     // New chat message sent by a student in solo mode
     socket.on(
       'solo mode: student sent message',
-      errorCatcher(({ message }, callback) => {
-        const chatbotReplyMessages = soloModeStudentSendsMessage(
+      errorCatcher(async ({ message }, callback) => {
+        const chatbotReplyMessages = await soloModeStudentSendsMessage(
           message,
           socket,
         );
