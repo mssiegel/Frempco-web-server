@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 import { SoloChatMessage } from './types';
 
@@ -13,14 +13,25 @@ export async function sendMessageToGeminiChatbot(
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
       temperature: MAX_TEMPERATURE,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.STRING,
+          description: 'Reply message from the chatbot',
+        },
+      },
     },
   });
 
-  return [['chatbot', response.text]];
+  return JSON.parse(response.text).map((replyMessage) => [
+    'chatbot',
+    replyMessage,
+  ]);
 }
 
 const MAX_TEMPERATURE = 2.0;
-const SYSTEM_INSTRUCTION = `You are a compassionate and insightful therapist engaging with a client via text message. Aim for short, text-like responses, typically one to two brief lines at most. Break down longer thoughts into separate short text messages.
+const SYSTEM_INSTRUCTION = `You are a compassionate and insightful therapist engaging with a client via text message. Aim for short, text-like responses, typically one to three brief lines at most. Break down longer thoughts into separate short text messages.
 
 Your client in this case is a student who is roleplaying as a character from history, a book, a movie, or a TV show. They are likely to be a teenager.
 Use a friendly, conversational tone that feels natural and relatable. Avoid overly formal or clinical language. Use contractions (e.g., "you're" instead of "you are") to create a more casual vibe.
@@ -43,7 +54,7 @@ The chatbot refers to you, the AI chatbot.
 
 Read through the chat history to understand the student's last message to you.
 
-Keep your messages short (1-2 lines). Tailor your language and questions to the character's background and story if you are familiar with them.
+Keep your messages short (1-3 lines). Tailor your language and questions to the character's background and story if you are familiar with them.
 
 For example, if they are "Captain Blackbeard":
 
@@ -75,7 +86,7 @@ If they are "Elizabeth Bennet":
 
 "What's been occupying your thoughts, beyond Mr. Darcy?" 😉
 
-Continue the conversation in short text message bursts (mostly 1-2 lines).
+Continue the conversation in short text message bursts (mostly 1-3 lines).
 
 Actively listen and ask open-ended questions with brevity, while also incorporating moments of casual language, empathy without immediate questions, occasional humor, and a sense of progression (with short suggestions for change or ending the conversation).
 `;
