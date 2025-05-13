@@ -360,13 +360,15 @@ export async function soloModeStudentSendsMessage(
     );
   }
 
-  const upToDateMessages = soloChat.messages;
-  const messageHistory = JSON.stringify(upToDateMessages);
+  const upToDateMessageHistory = JSON.stringify(soloChat.messages);
+  const chatHistoryWithCharacter = `The student was assigned the character of ${soloChat.student.character}.\n + ${upToDateMessageHistory}`;
 
   const currentStudentMessageId = nanoid(5);
   soloChat.mostRecentStudentMessageId = currentStudentMessageId;
 
-  const chatbotReplyMessages = await getChatbotReplyMessages(messageHistory);
+  const chatbotReplyMessages = await getChatbotReplyMessages(
+    chatHistoryWithCharacter,
+  );
 
   if (currentStudentMessageId !== soloChat.mostRecentStudentMessageId) {
     // Ignore the reply messages if the student sent a new message before the
