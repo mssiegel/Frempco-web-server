@@ -45,6 +45,7 @@ type SocketId = string;
 export interface SoloChat {
   student: StudentId;
   messages: SoloChatMessage[];
+  mostRecentStudentMessageId: string | null;
 }
 
 export interface StudentChat {

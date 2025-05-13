@@ -4,7 +4,7 @@ import { SoloChatMessage } from './types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export async function sendMessageToGeminiChatbot(
+export async function getChatbotReplyMessages(
   chatHistory: string,
 ): Promise<SoloChatMessage[]> {
   const response = await ai.models.generateContent({

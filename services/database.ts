@@ -15,7 +15,7 @@ import {
   SoloChatMessage,
 } from './types';
 import { sendEmailOfChats } from './sendEmailOfChats.js';
-import { sendMessageToGeminiChatbot } from './gemini.js';
+import { getChatbotReplyMessages } from './gemini.js';
 
 const classrooms: Classrooms = {};
 const teachers: Teachers = {};
@@ -321,6 +321,7 @@ export function startSoloMode(
       socketId: studentSocketId,
     },
     messages: chatbotWelcomeMessages,
+    mostRecentStudentMessageId: null,
   };
   const soloChatId = `${nanoid(5)}#${studentSocketId}` as ChatId;
   classroom.soloChats[soloChatId] = studentChat;
@@ -346,25 +347,38 @@ export async function soloModeStudentSendsMessage(
 
   const classroomName = students[socketId].classroomName;
   const classroom = getClassroom(classroomName);
+  const soloChat = classroom.soloChats[soloChatId];
   // A classroom won't exist if the teacher already left
   if (classroom) {
     // Send student's message to teacher
     sendMessagesToTeacherAndSaveRecordOfIt(
       classroom,
+      soloChat,
       studentSocket,
       soloChatId,
       [['student', message]],
     );
   }
 
-  const upToDateMessages = classroom.soloChats[soloChatId].messages;
+  const upToDateMessages = soloChat.messages;
   const messageHistory = JSON.stringify(upToDateMessages);
-  const chatbotReplyMessages = await sendMessageToGeminiChatbot(messageHistory);
+
+  const currentStudentMessageId = nanoid(5);
+  soloChat.mostRecentStudentMessageId = currentStudentMessageId;
+
+  const chatbotReplyMessages = await getChatbotReplyMessages(messageHistory);
+
+  if (currentStudentMessageId !== soloChat.mostRecentStudentMessageId) {
+    // Ignore the reply messages if the student sent a new message before the
+    // chatbot finished generating its reply.
+    return [];
+  }
 
   if (classroom) {
     // Send chatbot's reply messages to teacher
     sendMessagesToTeacherAndSaveRecordOfIt(
       classroom,
+      soloChat,
       studentSocket,
       soloChatId,
       chatbotReplyMessages,
@@ -377,8 +391,9 @@ export async function soloModeStudentSendsMessage(
 
 function sendMessagesToTeacherAndSaveRecordOfIt(
   classroom,
+  soloChat: SoloChat,
   studentSocket: Socket,
-  soloChatId,
+  soloChatId: ChatId,
   messages: SoloChatMessage[],
 ) {
   if (classroom) {
@@ -389,7 +404,6 @@ function sendMessagesToTeacherAndSaveRecordOfIt(
         chatId: soloChatId,
       });
   }
-  const soloChat: SoloChat = classroom.soloChats[soloChatId];
   soloChat.messages.push(...messages);
 }
 

@@ -130,7 +130,7 @@ export default function socketIOSetup(server) {
           message,
           socket,
         );
-        callback({ chatbotReplyMessages });
+        if (chatbotReplyMessages.length > 0) callback({ chatbotReplyMessages });
       }),
     );
 
