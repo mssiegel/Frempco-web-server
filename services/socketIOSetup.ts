@@ -14,6 +14,10 @@ import {
   studentSendsMessage,
   teacherSendsMessage,
   sendUserTyping,
+  startSoloMode,
+  soloModeStudentSendsMessage,
+  soloModeTeacherSendsMessage,
+  endSoloMode,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -102,6 +106,47 @@ export default function socketIOSetup(server) {
       'student typing',
       errorCatcher(() => {
         sendUserTyping(socket);
+      }),
+    );
+
+    // Teacher starts solo mode for a student
+    socket.on(
+      'solo mode: start chat',
+      errorCatcher(({ studentSocketId, characterName }, callback) => {
+        const { soloChatId: chatId, messages } = startSoloMode(
+          studentSocketId,
+          characterName,
+          socket.id,
+        );
+        callback({ chatId, messages });
+      }),
+    );
+
+    // New chat message sent by a student in solo mode
+    socket.on(
+      'solo mode: student sent message',
+      errorCatcher(async ({ message }, callback) => {
+        const chatbotReplyMessages = await soloModeStudentSendsMessage(
+          message,
+          socket,
+        );
+        if (chatbotReplyMessages.length > 0) callback({ chatbotReplyMessages });
+      }),
+    );
+
+    // New chat message sent from teacher to a student in a solo chat
+    socket.on(
+      'solo mode: teacher sent message',
+      errorCatcher(({ message, chatId }) => {
+        soloModeTeacherSendsMessage(message, socket, chatId);
+      }),
+    );
+
+    // Teacher ends solo mode for a student
+    socket.on(
+      'solo mode: end chat',
+      errorCatcher(({ chatId }) => {
+        endSoloMode(socket, chatId);
       }),
     );
   });

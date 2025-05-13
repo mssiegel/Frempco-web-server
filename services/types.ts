@@ -6,6 +6,7 @@ export interface Classrooms {
     students: SocketId[];
     // We track the chats so we can email them to the teacher at the end of class
     chats: Record<ChatId, StudentChat> | {};
+    soloChats: Record<ChatId, SoloChat> | {};
     // The teacher's email address which will be sent a copy of all chats.
     email: string;
   };
@@ -33,9 +34,19 @@ export interface ChatIds {
   [socketId: SocketId]: ChatId;
 }
 
-export type ChatId = 'nanoid#${SocketId}#${SocketId}';
+export interface SoloChatIds {
+  [socketId: SocketId]: ChatId;
+}
+
+export type ChatId = 'nanoid#${SocketId}#${SocketId}' | 'nanoid#${SocketId}';
 
 type SocketId = string;
+
+export interface SoloChat {
+  student: StudentId;
+  messages: SoloChatMessage[];
+  mostRecentStudentMessageId: string | null;
+}
 
 export interface StudentChat {
   studentPair: [StudentId, StudentId];
@@ -49,3 +60,4 @@ interface StudentId {
 }
 
 export type ChatMessage = ['student1' | 'student2' | 'teacher', string];
+export type SoloChatMessage = ['student' | 'chatbot' | 'teacher', string];
