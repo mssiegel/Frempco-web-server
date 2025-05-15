@@ -341,9 +341,11 @@ export function startSoloMode(
 export async function soloModeStudentSendsMessage(
   message: string,
   studentSocket: Socket,
-): Promise<SoloChatMessage[]> {
+): Promise<SoloChatMessage[] | null> {
   const socketId = studentSocket.id;
   const soloChatId = soloChatIds[socketId];
+
+  if (soloChatId === undefined) return null;
 
   const classroomName = students[socketId].classroomName;
   const classroom = getClassroom(classroomName);

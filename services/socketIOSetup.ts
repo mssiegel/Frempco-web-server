@@ -130,6 +130,14 @@ export default function socketIOSetup(server) {
           message,
           socket,
         );
+
+        // If the chatbot reply messages are null, it means the student is not
+        // in solo mode. This happens when a student's phone goes dark and the socket
+        // disconnects. Afterwards the student reopens the web app and sends a message.
+        if (chatbotReplyMessages === null)
+          callback({ soloModeAlreadyEnded: true });
+
+        // If the chatbot reply messages are an empty array, it means the chatbot has no response
         if (chatbotReplyMessages.length > 0) callback({ chatbotReplyMessages });
       }),
     );
