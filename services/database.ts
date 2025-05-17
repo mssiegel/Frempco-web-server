@@ -298,6 +298,10 @@ export function sendUserTyping(socket: Socket) {
   socket.to(chatId).emit('peer is typing');
 }
 
+export function checkIfStudentIsInsideAClassroom(socketId: string) {
+  return socketId in students;
+}
+
 export function startSoloMode(
   studentSocketId: string,
   characterName: string,
@@ -345,8 +349,6 @@ export async function soloModeStudentSendsMessage(
   const socketId = studentSocket.id;
   const soloChatId = soloChatIds[socketId];
 
-  if (soloChatId === undefined) return null;
-
   const classroomName = students[socketId].classroomName;
   const classroom = getClassroom(classroomName);
   const soloChat = classroom.soloChats[soloChatId];
@@ -373,8 +375,8 @@ export async function soloModeStudentSendsMessage(
   );
 
   if (currentStudentMessageId !== soloChat.mostRecentStudentMessageId) {
-    // Ignore the reply messages if the student sent a new message before the
-    // chatbot finished generating its reply.
+    // Discard the chatbot's reply messages if another student message arrived while the chatbot
+    // was still preparing its reply. This ensures the chatbot only responds to the latest message.
     return [];
   }
 
