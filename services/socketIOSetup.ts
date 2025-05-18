@@ -81,8 +81,7 @@ export default function socketIOSetup(server) {
     socket.on(
       'unpair student chat',
       errorCatcher(({ chatId, student1, student2 }) => {
-        const teacher = getTeacher(socket.id);
-        unpairStudentChat(teacher.socket, chatId, student1, student2);
+        unpairStudentChat(socket, chatId, student1, student2);
       }),
     );
 
