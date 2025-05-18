@@ -334,7 +334,7 @@ export function startSoloMode(
 export async function soloModeStudentSendsMessage(
   message: string,
   studentSocket: Socket,
-): Promise<SoloChatMessage[] | null> {
+): Promise<SoloChatMessage[]> {
   const socketId = studentSocket.id;
   const soloChatId = soloChatIds[socketId];
 
