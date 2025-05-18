@@ -233,23 +233,12 @@ export function unpairStudentChat(
   student1,
   student2,
 ) {
+  teacherSocket.to(chatId).emit('teacher ended chat', {});
+
   const stud1 = getStudent(student1.socketId);
   const stud2 = getStudent(student2.socketId);
 
-  // TODO refactor: have the teacher socket emit the message to end the chat.
-  stud1.socket.to(chatId).emit('teacher ended chat', {});
-  stud2.socket.to(chatId).emit('teacher ended chat', {});
-
   deleteChat(chatId, stud1, stud2);
-
-  // TODO refactor: no need for this event, just end the chat on the teacher's front end immediately.
-  if (teacherSocket) {
-    teacherSocket.emit('student chat unpaired', {
-      chatId,
-      student1,
-      student2,
-    });
-  }
 }
 
 export function studentSendsMessage(message: string, socket: Socket) {
@@ -345,7 +334,7 @@ export function startSoloMode(
 export async function soloModeStudentSendsMessage(
   message: string,
   studentSocket: Socket,
-): Promise<SoloChatMessage[] | null> {
+): Promise<SoloChatMessage[]> {
   const socketId = studentSocket.id;
   const soloChatId = soloChatIds[socketId];
 
