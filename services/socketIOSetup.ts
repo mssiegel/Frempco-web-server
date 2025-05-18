@@ -18,6 +18,7 @@ import {
   soloModeStudentSendsMessage,
   soloModeTeacherSendsMessage,
   endSoloMode,
+  checkIfStudentIsInsideAClassroom,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -80,16 +81,22 @@ export default function socketIOSetup(server) {
     socket.on(
       'unpair student chat',
       errorCatcher(({ chatId, student1, student2 }) => {
-        const teacher = getTeacher(socket.id);
-        unpairStudentChat(teacher.socket, chatId, student1, student2);
+        unpairStudentChat(socket, chatId, student1, student2);
       }),
     );
 
     // New chat message sent from one student to their peer
     socket.on(
       'student sent message',
-      errorCatcher(({ message }) => {
-        studentSendsMessage(message, socket);
+      errorCatcher(({ message }, callback) => {
+        // A student is no longer in the server's classroom when a student's
+        // phone goes dark and the socket disconnects and afterwards the student
+        // reopens the web app and sends a message.
+        const isStudentInsideClassroom = checkIfStudentIsInsideAClassroom(
+          socket.id,
+        );
+        if (isStudentInsideClassroom) studentSendsMessage(message, socket);
+        else callback({ studentNotInPairedChat: true });
       }),
     );
 
@@ -126,11 +133,25 @@ export default function socketIOSetup(server) {
     socket.on(
       'solo mode: student sent message',
       errorCatcher(async ({ message }, callback) => {
-        const chatbotReplyMessages = await soloModeStudentSendsMessage(
-          message,
-          socket,
+        const isStudentInsideClassroom = checkIfStudentIsInsideAClassroom(
+          socket.id,
         );
-        if (chatbotReplyMessages.length > 0) callback({ chatbotReplyMessages });
+
+        // A student is no longer in the server's classroom when a student's
+        // phone goes dark and the socket disconnects and afterwards the student
+        // reopens the web app and sends a message.
+        if (isStudentInsideClassroom) {
+          const chatbotReplyMessages = await soloModeStudentSendsMessage(
+            message,
+            socket,
+          );
+
+          // If another student message is received before the chatbot finished
+          // generating a reply to the previous message, the pending reply is
+          // discarded, and chatbotReplyMessages will be empty for this turn.
+          if (chatbotReplyMessages.length > 0)
+            callback({ chatbotReplyMessages });
+        } else callback({ studentNotInSoloChat: true });
       }),
     );
 

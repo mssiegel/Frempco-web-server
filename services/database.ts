@@ -233,23 +233,12 @@ export function unpairStudentChat(
   student1,
   student2,
 ) {
+  teacherSocket.to(chatId).emit('teacher ended chat', {});
+
   const stud1 = getStudent(student1.socketId);
   const stud2 = getStudent(student2.socketId);
 
-  // TODO refactor: have the teacher socket emit the message to end the chat.
-  stud1.socket.to(chatId).emit('teacher ended chat', {});
-  stud2.socket.to(chatId).emit('teacher ended chat', {});
-
   deleteChat(chatId, stud1, stud2);
-
-  // TODO refactor: no need for this event, just end the chat on the teacher's front end immediately.
-  if (teacherSocket) {
-    teacherSocket.emit('student chat unpaired', {
-      chatId,
-      student1,
-      student2,
-    });
-  }
 }
 
 export function studentSendsMessage(message: string, socket: Socket) {
@@ -296,6 +285,10 @@ export function teacherSendsMessage(
 export function sendUserTyping(socket: Socket) {
   const chatId = chatIds[socket.id];
   socket.to(chatId).emit('peer is typing');
+}
+
+export function checkIfStudentIsInsideAClassroom(socketId: string) {
+  return socketId in students;
 }
 
 export function startSoloMode(
@@ -371,8 +364,8 @@ export async function soloModeStudentSendsMessage(
   );
 
   if (currentStudentMessageId !== soloChat.mostRecentStudentMessageId) {
-    // Ignore the reply messages if the student sent a new message before the
-    // chatbot finished generating its reply.
+    // Discard the chatbot's reply messages if another student message arrived while the chatbot
+    // was still preparing its reply. This ensures the chatbot only responds to the latest message.
     return [];
   }
 
