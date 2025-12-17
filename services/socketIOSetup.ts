@@ -12,11 +12,9 @@ import {
   unpairStudentChat,
   pairStudents,
   studentSendsMessage,
-  teacherSendsMessage,
   sendUserTyping,
   startSoloMode,
   soloModeStudentSendsMessage,
-  soloModeTeacherSendsMessage,
   endSoloMode,
   checkIfStudentIsInsideAClassroom,
 } from './database.js';
@@ -100,14 +98,6 @@ export default function socketIOSetup(server) {
       }),
     );
 
-    // New chat message sent from teacher to students
-    socket.on(
-      'teacher sent message',
-      errorCatcher(({ message, chatId }) => {
-        teacherSendsMessage(message, socket, chatId);
-      }),
-    );
-
     // Informs student when their peer is typing
     socket.on(
       'student typing',
@@ -152,14 +142,6 @@ export default function socketIOSetup(server) {
           if (chatbotReplyMessages.length > 0)
             callback({ chatbotReplyMessages });
         } else callback({ studentNotInSoloChat: true });
-      }),
-    );
-
-    // New chat message sent from teacher to a student in a solo chat
-    socket.on(
-      'solo mode: teacher sent message',
-      errorCatcher(({ message, chatId }) => {
-        soloModeTeacherSendsMessage(message, socket, chatId);
       }),
     );
 

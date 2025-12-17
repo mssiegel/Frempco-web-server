@@ -268,20 +268,6 @@ export function studentSendsMessage(message: string, socket: Socket) {
   }
 }
 
-export function teacherSendsMessage(
-  message: string,
-  socket: Socket,
-  chatId: ChatId,
-) {
-  socket.to(chatId).emit('teacher sent message', { message });
-
-  const classroomName = teachers[socket.id].classroomName;
-  const classroom = getClassroom(classroomName);
-  const chat: StudentChat = classroom.chats[chatId];
-  const chatMessage: ChatMessage = ['teacher', message];
-  chat.messages.push(chatMessage);
-}
-
 export function sendUserTyping(socket: Socket) {
   const chatId = chatIds[socket.id];
   socket.to(chatId).emit('peer is typing');
@@ -400,24 +386,6 @@ function sendMessagesToTeacherAndSaveRecordOfIt(
       });
   }
   soloChat.messages.push(...messages);
-}
-
-export function soloModeTeacherSendsMessage(
-  message: string,
-  teacherSocket: Socket,
-  soloChatId: ChatId,
-) {
-  const classroomName = teachers[teacherSocket.id].classroomName;
-  const classroom = getClassroom(classroomName);
-  const studentSocketId = classroom.soloChats[soloChatId].student.socketId;
-
-  teacherSocket
-    .to(studentSocketId)
-    .emit('solo mode: teacher sent message', { message });
-
-  const soloChat: SoloChat = classroom.soloChats[soloChatId];
-  const soloChatMessage: SoloChatMessage = ['teacher', message];
-  soloChat.messages.push(soloChatMessage);
 }
 
 export function endSoloMode(teacherSocket: Socket, soloChatId: ChatId) {
