@@ -43,14 +43,6 @@ export default function socketIOSetup(server) {
     );
 
     socket.on(
-      'deactivate classroom',
-      errorCatcher(() => {
-        const teacher = getTeacher(socket.id);
-        if (teacher) deleteClassroom(teacher);
-      }),
-    );
-
-    socket.on(
       'new student entered',
       errorCatcher(({ student: realName, classroom: classroomName }) => {
         addStudentToClassroom(realName, classroomName, socket);
