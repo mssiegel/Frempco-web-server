@@ -27,14 +27,18 @@ export function getClassroom(classroomName: string) {
   return classrooms[classroomName];
 }
 
-export function addClassroom(classroomName: string, socket: Socket) {
+export function addClassroom(
+  classroomName: string,
+  socket: Socket,
+  email: string,
+) {
   teachers[socket.id] = { socket, classroomName };
   classrooms[classroomName] = {
     teacherSocketId: socket.id,
     students: [],
     chats: {},
     soloChats: {},
-    email: '',
+    email,
   };
 }
 
