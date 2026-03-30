@@ -36,9 +36,9 @@ export default function socketIOSetup(server) {
     socket.on('user disconnected', errorCatcher(userDisconnected));
 
     socket.on(
-      'activate classroom',
-      errorCatcher(({ classroomName }) => {
-        addClassroom(classroomName, socket);
+      'create game room',
+      errorCatcher(({ classroomName, email }) => {
+        addClassroom(classroomName, socket, email);
       }),
     );
 
