@@ -2,7 +2,7 @@ import { Socket } from 'socket.io';
 import { nanoid } from 'nanoid/non-secure';
 
 import {
-  Classrooms,
+  Activities,
   Teachers,
   Students,
   Student,
@@ -13,27 +13,27 @@ import {
   SoloChat,
   SoloChatIds,
   SoloChatMessage,
-} from './types';
+} from './types.js';
 import { sendEmailOfChats } from './sendEmailOfChats.js';
 import { getChatbotReplyMessages } from './gemini.js';
 
-const classrooms: Classrooms = {};
+const activities: Activities = {};
 const teachers: Teachers = {};
 const students: Students = {};
 const chatIds: ChatIds = {};
 const soloChatIds: SoloChatIds = {};
 
-export function getClassroom(classroomName: string) {
-  return classrooms[classroomName];
+export function getActivity(activityPin: string) {
+  return activities[activityPin];
 }
 
-export function addClassroom(
-  classroomName: string,
+export function addActivity(
+  activityPin: string,
   socket: Socket,
   email: string,
 ) {
-  teachers[socket.id] = { socket, classroomName };
-  classrooms[classroomName] = {
+  teachers[socket.id] = { socket, activityPin };
+  activities[activityPin] = {
     teacherSocketId: socket.id,
     students: [],
     chats: {},
@@ -42,35 +42,35 @@ export function addClassroom(
   };
 }
 
-export async function deleteClassroom(teacher) {
-  // Email the chats to the teacher before deleting the classroom
+export async function deleteActivity(teacher) {
+  // Email the chats to the teacher before deleting the activity
   await emailChatsToTeacher(teacher.socket.id);
 
-  delete classrooms[teacher.classroomName];
+  delete activities[teacher.activityPin];
   delete teachers[teacher.socket.id];
 
   // Does not delete the students from their chats. This lets the students
   // continue chatting even after the teacher closes the website. Additional
-  // chat messages sent after the teacher deletes the classrom will not be
+  // chat messages sent after the teacher deletes the activity will not be
   // emailed to the teacher.
 }
 
 async function emailChatsToTeacher(teacherSocketId: string) {
   // Sends all chats to the teacher, even those which have already ended.
 
-  const classroomName = teachers[teacherSocketId].classroomName;
-  const classroom = getClassroom(classroomName);
-  const chats = Object.values(classroom.chats);
-  const soloChats = Object.values(classroom.soloChats);
+  const activityPin = teachers[teacherSocketId].activityPin;
+  const activity = getActivity(activityPin);
+  const chats = Object.values(activity.chats);
+  const soloChats = Object.values(activity.soloChats);
 
-  if ((chats.length === 0 && soloChats.length === 0) || classroom.email === '')
+  if ((chats.length === 0 && soloChats.length === 0) || activity.email === '')
     return;
 
-  await sendEmailOfChats(chats, soloChats, classroom.email);
+  await sendEmailOfChats(chats, soloChats, activity.email);
 }
 
-export function setClassroomEmail(classroomName: string, email: string) {
-  classrooms[classroomName].email = email;
+export function setActivityEmail(activityPin: string, email: string) {
+  activities[activityPin].email = email;
 }
 
 export function getTeacher(socketId: string) {
@@ -81,41 +81,44 @@ export function getStudent(socketId: string) {
   return students[socketId];
 }
 
-export function addStudentToClassroom(
+export function addStudentToActivity(
   realName: string,
-  classroomName: string,
+  activityPin: string,
   socket: Socket,
 ) {
   students[socket.id] = {
     socket,
-    classroomName,
+    activityPin,
     realName,
     peerSocketId: null,
   };
 
-  const classroom = getClassroom(classroomName);
-  // double check student has not already joined classroom
-  if (classroom.students.includes(socket.id)) return;
-  classroom.students.push(socket.id);
+  const activity = getActivity(activityPin);
+  // activity won't exist if the teacher already left or pin is invalid
+  if (!activity) return;
+
+  // double check student has not already joined activity
+  if (activity.students.includes(socket.id)) return;
+  activity.students.push(socket.id);
 
   // inform teacher
-  const teacherSocket = teachers[classroom.teacherSocketId].socket;
+  const teacherSocket = teachers[activity.teacherSocketId].socket;
   teacherSocket.emit('new student joined', { realName, socketId: socket.id });
 }
 
-export function remStudentFromClassroom(student: Student) {
-  const classroomName = student.classroomName;
-  const classroom = getClassroom(classroomName);
+export function removeStudentFromActivity(student: Student) {
+  const activityPin = student.activityPin;
+  const activity = getActivity(activityPin);
 
   const isStudentInPairedChat = student.peerSocketId !== null;
   let teacherSocket = null;
-  // a classroom won't exist if the teacher already left
-  if (classroom) {
-    classroom.students = classroom.students.filter(
+  // an activity won't exist if the teacher already left
+  if (activity) {
+    activity.students = activity.students.filter(
       (socketId) => socketId !== student.socket.id,
     );
 
-    const teacher = getTeacher(classroom.teacherSocketId);
+    const teacher = getTeacher(activity.teacherSocketId);
     teacherSocket = teacher.socket;
     const isStudentInSoloMode = student.socket.id in soloChatIds;
 
@@ -143,7 +146,7 @@ export function remStudentFromClassroom(student: Student) {
 
     // a teacher socket won't exist if the teacher already left
     if (teacherSocket) {
-      // informs teacher that chat ended but student2 remains in the classroom
+      // informs teacher that chat ended but student2 remains in the activity
       teacherSocket.emit('chat ended - two students', {
         chatId,
         student2: {
@@ -158,8 +161,8 @@ export function remStudentFromClassroom(student: Student) {
 }
 
 export function pairStudents(studentPairs, teacherSocket: Socket) {
-  const classroomName = teachers[teacherSocket.id].classroomName;
-  const classroom = getClassroom(classroomName);
+  const activityPin = teachers[teacherSocket.id].activityPin;
+  const activity = getActivity(activityPin);
 
   for (const [tempStudent1, tempStudent2] of studentPairs) {
     const student1 = getStudent(tempStudent1.socketId);
@@ -195,7 +198,7 @@ export function pairStudents(studentPairs, teacherSocket: Socket) {
       studentPair: [tempStudent1, tempStudent2],
     });
 
-    // add a chat object to the classroom object. This will let us store a
+    // add a chat object to the activity object. This will let us store a
     // record of the chat messages.
     const studentChat: StudentChat = {
       studentPair: [
@@ -212,7 +215,7 @@ export function pairStudents(studentPairs, teacherSocket: Socket) {
       ],
       messages: [],
     };
-    classroom.chats[chatId] = studentChat;
+    activity.chats[chatId] = studentChat;
   }
 }
 
@@ -226,7 +229,7 @@ function deleteChat(chatId: ChatId, student1: Student, student2: Student) {
   delete chatIds[student1.socket.id];
   delete chatIds[student2.socket.id];
 
-  // this function does not delete the chat from the classroom object. This
+  // this function does not delete the chat from the activity object. This
   // ensures the teacher will get emailed all chats, even those which have
   // already ended.
 }
@@ -252,19 +255,19 @@ export function studentSendsMessage(message: string, socket: Socket) {
   // send message to other student
   socket.to(chatId).emit('student sent message', { message });
   // send message to teacher
-  const classroomName = students[socketId].classroomName;
-  const classroom = getClassroom(classroomName);
-  // a classroom won't exist if the teacher already left
-  if (classroom) {
+  const activityPin = students[socketId].activityPin;
+  const activity = getActivity(activityPin);
+  // an activity won't exist if the teacher already left
+  if (activity) {
     socket
-      .to(classroom.teacherSocketId)
+      .to(activity.teacherSocketId)
       .emit('teacher listens to student message', {
         message,
         socketId,
         chatId,
       });
 
-    const chat: StudentChat = classroom.chats[chatId];
+    const chat: StudentChat = activity.chats[chatId];
     const messageAuthor =
       chat.studentPair[0].socketId === socketId ? 'student1' : 'student2';
     const chatMessage: ChatMessage = [messageAuthor, message];
@@ -277,7 +280,7 @@ export function sendUserTyping(socket: Socket) {
   socket.to(chatId).emit('peer is typing');
 }
 
-export function checkIfStudentIsInsideAClassroom(socketId: string) {
+export function checkIfStudentIsInsideAnActivity(socketId: string) {
   return socketId in students;
 }
 
@@ -286,8 +289,8 @@ export function startSoloMode(
   characterName: string,
   teacherSocketId: string,
 ): { soloChatId: ChatId; messages: SoloChatMessage[] } {
-  const classroomName = teachers[teacherSocketId].classroomName;
-  const classroom = getClassroom(classroomName);
+  const activityPin = teachers[teacherSocketId].activityPin;
+  const activity = getActivity(activityPin);
   const realName = getStudent(studentSocketId).realName;
 
   const chatbotWelcomeMessages = [
@@ -295,7 +298,7 @@ export function startSoloMode(
     ['chatbot', 'So, um, who are you roleplaying as today? 😊'],
   ] as SoloChatMessage[];
 
-  // Add a solo chat object to the classroom object to store a record of the
+  // Add a solo chat object to the activity object to store a record of the
   // chat messages.
   const studentChat: SoloChat = {
     student: {
@@ -307,7 +310,7 @@ export function startSoloMode(
     mostRecentStudentMessageId: null,
   };
   const soloChatId = `${nanoid(5)}#${studentSocketId}` as ChatId;
-  classroom.soloChats[soloChatId] = studentChat;
+  activity.soloChats[soloChatId] = studentChat;
 
   soloChatIds[studentSocketId] = soloChatId;
 
@@ -328,14 +331,14 @@ export async function soloModeStudentSendsMessage(
   const socketId = studentSocket.id;
   const soloChatId = soloChatIds[socketId];
 
-  const classroomName = students[socketId].classroomName;
-  const classroom = getClassroom(classroomName);
-  const soloChat = classroom.soloChats[soloChatId];
-  // A classroom won't exist if the teacher already left
-  if (classroom) {
+  const activityPin = students[socketId].activityPin;
+  const activity = getActivity(activityPin);
+  const soloChat = activity.soloChats[soloChatId];
+  // An activity won't exist if the teacher already left
+  if (activity) {
     // Send student's message to teacher
     sendMessagesToTeacherAndSaveRecordOfIt(
-      classroom,
+      activity,
       soloChat,
       studentSocket,
       soloChatId,
@@ -359,10 +362,10 @@ export async function soloModeStudentSendsMessage(
     return [];
   }
 
-  if (classroom) {
+  if (activity) {
     // Send chatbot's reply messages to teacher
     sendMessagesToTeacherAndSaveRecordOfIt(
-      classroom,
+      activity,
       soloChat,
       studentSocket,
       soloChatId,
@@ -375,15 +378,15 @@ export async function soloModeStudentSendsMessage(
 }
 
 function sendMessagesToTeacherAndSaveRecordOfIt(
-  classroom,
+  activity,
   soloChat: SoloChat,
   studentSocket: Socket,
   soloChatId: ChatId,
   messages: SoloChatMessage[],
 ) {
-  if (classroom) {
+  if (activity) {
     studentSocket
-      .to(classroom.teacherSocketId)
+      .to(activity.teacherSocketId)
       .emit('solo mode: teacher listens to new message', {
         messages,
         chatId: soloChatId,
@@ -393,15 +396,15 @@ function sendMessagesToTeacherAndSaveRecordOfIt(
 }
 
 export function endSoloMode(teacherSocket: Socket, soloChatId: ChatId) {
-  const classroomName = teachers[teacherSocket.id].classroomName;
-  const classroom = getClassroom(classroomName);
-  const studentSocketId = classroom.soloChats[soloChatId].student.socketId;
+  const activityPin = teachers[teacherSocket.id].activityPin;
+  const activity = getActivity(activityPin);
+  const studentSocketId = activity.soloChats[soloChatId].student.socketId;
 
   delete soloChatIds[studentSocketId];
 
   teacherSocket.to(studentSocketId).emit('solo mode: teacher ended chat', {});
 
-  // This function does not delete the solo chat from the classroom object.
+  // This function does not delete the solo chat from the activity object.
   // This ensures the teacher will get emailed all chats, even those which have
   // already ended.
 }

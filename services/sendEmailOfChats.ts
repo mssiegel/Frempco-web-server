@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-import { SoloChat, StudentChat } from '../services/types';
+import { SoloChat, StudentChat } from '../services/types.js';
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
