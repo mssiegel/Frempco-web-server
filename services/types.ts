@@ -1,7 +1,7 @@
 import { Socket } from 'socket.io';
 
-export interface Classrooms {
-  [classroomName: string]: {
+export interface Activities {
+  [activityPin: string]: {
     teacherSocketId: SocketId;
     students: SocketId[];
     // We track the chats so we can email them to the teacher at the end of class
@@ -15,7 +15,7 @@ export interface Classrooms {
 export interface Teachers {
   [teacherSocketId: SocketId]: {
     socket: Socket;
-    classroomName: string;
+    activityPin: string;
   };
 }
 
@@ -25,7 +25,7 @@ export interface Students {
 
 export interface Student {
   socket: Socket;
-  classroomName: string;
+  activityPin: string;
   realName: string;
   peerSocketId: SocketId | null;
 }
