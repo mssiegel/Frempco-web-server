@@ -7,7 +7,7 @@ import { createServer } from 'http';
 
 import corsOptions from './services/corsOptions.js';
 import socketIOSetup from './services/socketIOSetup.js';
-import classroomRoutes from './routes/classrooms.js';
+import activityRoutes from './routes/activities.js';
 
 const app = express();
 
@@ -20,7 +20,7 @@ socketIOSetup(server);
 
 const port = process.env.PORT || 4000;
 
-app.use('/api/v1/classrooms', classroomRoutes);
+app.use('/api/v1/activities', activityRoutes);
 
 app.get('/', (req, res) => {
   res.send('Hello World!');

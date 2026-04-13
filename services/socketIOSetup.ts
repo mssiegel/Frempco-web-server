@@ -3,12 +3,12 @@ import { Server } from 'socket.io';
 import corsOptions from './corsOptions.js';
 import errorCatcher from '../utils/errorCatcher.js';
 import {
-  addClassroom,
-  deleteClassroom,
+  addActivity,
+  deleteActivity,
   getTeacher,
   getStudent,
-  addStudentToClassroom,
-  remStudentFromClassroom,
+  addStudentToActivity,
+  removeStudentFromActivity,
   unpairStudentChat,
   pairStudents,
   studentSendsMessage,
@@ -16,7 +16,7 @@ import {
   startSoloMode,
   soloModeStudentSendsMessage,
   endSoloMode,
-  checkIfStudentIsInsideAClassroom,
+  checkIfStudentIsInsideAnActivity,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -27,25 +27,25 @@ export default function socketIOSetup(server) {
   io.on('connect', (socket) => {
     const userDisconnected = () => {
       const teacher = getTeacher(socket.id);
-      if (teacher) deleteClassroom(teacher);
+      if (teacher) deleteActivity(teacher);
 
       const student = getStudent(socket.id);
-      if (student) remStudentFromClassroom(student);
+      if (student) removeStudentFromActivity(student);
     };
     socket.on('disconnect', errorCatcher(userDisconnected));
     socket.on('user disconnected', errorCatcher(userDisconnected));
 
     socket.on(
-      'create game room',
-      errorCatcher(({ classroomName, email }) => {
-        addClassroom(classroomName, socket, email);
+      'create activity',
+      errorCatcher(({ activityPin, email }) => {
+        addActivity(activityPin, socket, email);
       }),
     );
 
     socket.on(
       'new student entered',
-      errorCatcher(({ student: realName, classroom: classroomName }) => {
-        addStudentToClassroom(realName, classroomName, socket);
+      errorCatcher(({ student: realName, activityPin }) => {
+        addStudentToActivity(realName, activityPin, socket);
       }),
     );
 
@@ -58,12 +58,12 @@ export default function socketIOSetup(server) {
     );
 
     socket.on(
-      'remove student from classroom',
+      'remove student from activity',
       errorCatcher(({ socketId }) => {
         const student = getStudent(socketId);
         if (student) {
-          remStudentFromClassroom(student);
-          student.socket.emit('remove student from classroom');
+          removeStudentFromActivity(student);
+          student.socket.emit('student removed from activity');
         }
       }),
     );
@@ -79,13 +79,13 @@ export default function socketIOSetup(server) {
     socket.on(
       'student sent message',
       errorCatcher(({ message }) => {
-        // A student is no longer in the server's classroom when a student's
+        // A student is no longer in the server's activity when a student's
         // phone goes dark and the socket disconnects and afterwards the student
         // reopens the web app and sends a message.
-        const isStudentInsideClassroom = checkIfStudentIsInsideAClassroom(
+        const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
           socket.id,
         );
-        if (isStudentInsideClassroom) studentSendsMessage(message, socket);
+        if (isStudentInsideActivity) studentSendsMessage(message, socket);
       }),
     );
 
@@ -114,14 +114,14 @@ export default function socketIOSetup(server) {
     socket.on(
       'solo mode: student sent message',
       errorCatcher(async ({ message }, callback) => {
-        const isStudentInsideClassroom = checkIfStudentIsInsideAClassroom(
+        const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
           socket.id,
         );
 
-        // A student is no longer in the server's classroom when a student's
+        // A student is no longer in the server's activity when a student's
         // phone goes dark and the socket disconnects and afterwards the student
         // reopens the web app and sends a message.
-        if (isStudentInsideClassroom) {
+        if (isStudentInsideActivity) {
           const chatbotReplyMessages = await soloModeStudentSendsMessage(
             message,
             socket,

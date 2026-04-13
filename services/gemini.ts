@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
-import { SoloChatMessage } from './types';
+import { SoloChatMessage } from './types.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
