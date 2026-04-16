@@ -167,17 +167,11 @@ export function removeStudentFromActivity(student: Student) {
     const student2 = getStudent(student.peerSocketId);
 
     deleteChat(chatId, student, student2);
+    removeUnpairedStudentFromActivity(student2);
 
     // a teacher socket won't exist if the teacher already left
     if (teacherSocket) {
-      // informs teacher that chat ended but student2 remains in the activity
-      teacherSocket.emit('chat ended - two students', {
-        chatId,
-        student2: {
-          realName: student2.realName,
-          socketId: student2.socket.id,
-        },
-      });
+      teacherSocket.emit('chat ended - two students', { chatId });
     }
   }
 
@@ -270,6 +264,9 @@ export function unpairStudentChat(
   const stud2 = getStudent(student2.socketId);
 
   deleteChat(chatId, stud1, stud2);
+
+  removeUnpairedStudentFromActivity(stud1);
+  removeUnpairedStudentFromActivity(stud2);
 }
 
 export function studentSendsMessage(message: string, socket: Socket) {
@@ -427,6 +424,8 @@ export function endSoloMode(teacherSocket: Socket, soloChatId: ChatId) {
   delete soloChatIds[studentSocketId];
 
   teacherSocket.to(studentSocketId).emit('solo mode: teacher ended chat', {});
+
+  removeUnpairedStudentFromActivity(getStudent(studentSocketId));
 
   // This function does not delete the solo chat from the activity object.
   // This ensures the teacher will get emailed all chats, even those which have
