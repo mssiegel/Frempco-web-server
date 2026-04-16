@@ -8,6 +8,7 @@ import {
   getTeacher,
   getStudent,
   addStudentToActivity,
+  removeUnpairedStudentFromActivity,
   removeStudentFromActivity,
   unpairStudentChat,
   pairStudents,
@@ -62,7 +63,7 @@ export default function socketIOSetup(server) {
       errorCatcher(({ socketId }) => {
         const student = getStudent(socketId);
         if (student) {
-          removeStudentFromActivity(student);
+          removeUnpairedStudentFromActivity(student);
           student.socket.emit('student removed from activity');
         }
       }),

@@ -106,11 +106,42 @@ export function addStudentToActivity(
   teacherSocket.emit('new student joined', { realName, socketId: socket.id });
 }
 
+/**
+ * Removes a student from an activity when it is known they were not in a
+ * paired or solo chat.
+ */
+export function removeUnpairedStudentFromActivity(student: Student) {
+  const activity = getActivity(student.activityPin);
+
+  if (activity) {
+    activity.students = activity.students.filter(
+      (socketId) => socketId !== student.socket.id,
+    );
+
+    const teacherSocket = getTeacher(activity.teacherSocketId).socket;
+    teacherSocket.emit('unpaired student left', {
+      socketId: student.socket.id,
+    });
+  }
+
+  delete students[student.socket.id];
+}
+
+/**
+ * Handles the case when a student leaves and it is unknown whether they were
+ * in a chat.
+ */
 export function removeStudentFromActivity(student: Student) {
   const activityPin = student.activityPin;
   const activity = getActivity(activityPin);
 
   const isStudentInPairedChat = student.peerSocketId !== null;
+  const isStudentInSoloMode = student.socket.id in soloChatIds;
+  if (!isStudentInPairedChat && !isStudentInSoloMode) {
+    removeUnpairedStudentFromActivity(student);
+    return;
+  }
+
   let teacherSocket = null;
   // an activity won't exist if the teacher already left
   if (activity) {
@@ -120,14 +151,6 @@ export function removeStudentFromActivity(student: Student) {
 
     const teacher = getTeacher(activity.teacherSocketId);
     teacherSocket = teacher.socket;
-    const isStudentInSoloMode = student.socket.id in soloChatIds;
-
-    // Notify teacher if the student was neither in paired chat nor in solo chat
-    if (!isStudentInPairedChat && !isStudentInSoloMode) {
-      teacherSocket.emit('unpaired student left', {
-        socketId: student.socket.id,
-      });
-    }
 
     if (isStudentInSoloMode) {
       teacherSocket.emit('solo mode: student disconnected', {
