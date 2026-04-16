@@ -59,12 +59,12 @@ export default function socketIOSetup(server) {
     );
 
     socket.on(
-      'remove student from activity',
+      'teacher:removed-unpaired-student-from-activity',
       errorCatcher(({ socketId }) => {
         const student = getStudent(socketId);
         if (student) {
           removeUnpairedStudentFromActivity(student);
-          student.socket.emit('student removed from activity');
+          student.socket.emit('student:removed-from-activity');
         }
       }),
     );

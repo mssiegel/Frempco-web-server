@@ -117,11 +117,6 @@ export function removeUnpairedStudentFromActivity(student: Student) {
     activity.students = activity.students.filter(
       (socketId) => socketId !== student.socket.id,
     );
-
-    const teacherSocket = getTeacher(activity.teacherSocketId).socket;
-    teacherSocket.emit('unpaired student left', {
-      socketId: student.socket.id,
-    });
   }
 
   delete students[student.socket.id];
@@ -137,8 +132,14 @@ export function removeStudentFromActivity(student: Student) {
 
   const isStudentInPairedChat = student.peerSocketId !== null;
   const isStudentInSoloMode = student.socket.id in soloChatIds;
+
   if (!isStudentInPairedChat && !isStudentInSoloMode) {
     removeUnpairedStudentFromActivity(student);
+
+    const teacherSocket = getTeacher(activity.teacherSocketId).socket;
+    teacherSocket.emit('unpaired student left', {
+      socketId: student.socket.id,
+    });
     return;
   }
 
