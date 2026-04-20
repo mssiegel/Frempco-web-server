@@ -67,9 +67,7 @@ export type TeacherLookups = Record<SessionId, Teacher>;
 export type StudentLookups = Record<SessionId, Student>;
 export type ChatLookups = Record<ChatId, Chat>;
 export type SoloChatLookups = Record<ChatId, SoloChat>;
-export type SocketIdToSessionIdLookups = Record<SocketId, SessionId>;
 
-export interface SessionResolution {
-  sessionId: SessionId;
-  socketId: SocketId;
+export interface SessionSocketData {
+  sessionId?: SessionId;
 }

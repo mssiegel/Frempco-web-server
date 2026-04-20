@@ -17,7 +17,7 @@ import {
   SoloChat,
   SoloChatLookups,
   SoloChatMessage,
-  SocketIdToSessionIdLookups,
+  SessionSocketData,
   StudentInChat,
 } from './types.js';
 import { sendEmailOfChats } from './sendEmailOfChats.js';
@@ -28,26 +28,23 @@ const teacherLookups: TeacherLookups = {};
 const studentLookups: StudentLookups = {};
 const chatLookups: ChatLookups = {};
 const soloChatLookups: SoloChatLookups = {};
-const socketIdToTeacherSessionId: SocketIdToSessionIdLookups = {};
-const socketIdToStudentSessionId: SocketIdToSessionIdLookups = {};
 
 export function getSessionIdFromSocket(socket: Socket): SessionId {
+  const socketData = socket.data as SessionSocketData;
+  if (typeof socketData.sessionId === 'string' && socketData.sessionId.length > 0) {
+    return socketData.sessionId;
+  }
+
   const handshakeSessionId = socket.handshake.auth.sessionId;
-  return typeof handshakeSessionId === 'string' && handshakeSessionId.length > 0
-    ? handshakeSessionId
-    : socket.id;
-}
 
-function clearTeacherSocketMapping(socketId: SocketId, sessionId: SessionId) {
-  if (socketIdToTeacherSessionId[socketId] === sessionId) {
-    delete socketIdToTeacherSessionId[socketId];
+  if (
+    typeof handshakeSessionId !== 'string' ||
+    handshakeSessionId.trim().length === 0
+  ) {
+    throw new Error('Socket connection requires auth.sessionId.');
   }
-}
 
-function clearStudentSocketMapping(socketId: SocketId, sessionId: SessionId) {
-  if (socketIdToStudentSessionId[socketId] === sessionId) {
-    delete socketIdToStudentSessionId[socketId];
-  }
+  return handshakeSessionId;
 }
 
 function getStudentParticipant(
@@ -65,22 +62,21 @@ function getTeacherBySessionId(sessionId: SessionId) {
   return teacherLookups[sessionId];
 }
 
-export function getTeacherBySocketId(socketId: SocketId) {
-  const sessionId = socketIdToTeacherSessionId[socketId];
-  return sessionId ? getTeacherBySessionId(sessionId) : undefined;
+export function getConnectedTeacher(socket: Socket) {
+  const teacher = getTeacherBySessionId(getSessionIdFromSocket(socket));
+  return teacher?.socketId === socket.id ? teacher : undefined;
 }
 
 export function getStudentBySessionId(sessionId: SessionId) {
   return studentLookups[sessionId];
 }
 
-export function getStudentBySocketId(socketId: SocketId) {
-  const sessionId = socketIdToStudentSessionId[socketId];
-  return sessionId ? getStudentBySessionId(sessionId) : undefined;
+export function getConnectedStudent(socket: Socket) {
+  const student = getStudentBySessionId(getSessionIdFromSocket(socket));
+  return student?.socketId === socket.id ? student : undefined;
 }
 
 function removeStudentRecord(student: Student) {
-  clearStudentSocketMapping(student.socketId, student.sessionId);
   delete studentLookups[student.sessionId];
 }
 
@@ -110,10 +106,6 @@ export function addActivity(
   const sessionId = getSessionIdFromSocket(socket);
   const existingTeacher = teacherLookups[sessionId];
 
-  if (existingTeacher) {
-    clearTeacherSocketMapping(existingTeacher.socketId, sessionId);
-  }
-
   teacherLookups[sessionId] = {
     sessionId,
     socketId: socket.id,
@@ -122,7 +114,6 @@ export function addActivity(
     activityPin,
     connected: true,
   };
-  socketIdToTeacherSessionId[socket.id] = sessionId;
 
   activities[activityPin] = {
     pin: activityPin,
@@ -139,7 +130,6 @@ export async function deleteActivity(teacher: Teacher) {
   await emailChatsToTeacher(teacher);
 
   delete activities[teacher.activityPin];
-  clearTeacherSocketMapping(teacher.socketId, teacher.sessionId);
   delete teacherLookups[teacher.sessionId];
 
   // Does not delete the students from their chats. This lets the students
@@ -194,10 +184,6 @@ export function addStudentToActivity(
   const sessionId = getSessionIdFromSocket(socket);
   const existingStudent = studentLookups[sessionId];
 
-  if (existingStudent) {
-    clearStudentSocketMapping(existingStudent.socketId, sessionId);
-  }
-
   studentLookups[sessionId] = {
     sessionId,
     socketId: socket.id,
@@ -208,7 +194,6 @@ export function addStudentToActivity(
     chatId: existingStudent?.chatId ?? null,
     state: existingStudent?.state ?? 'waiting',
   };
-  socketIdToStudentSessionId[socket.id] = sessionId;
 
   // double check student has not already joined activity
   if (activity.studentSessionIds.includes(sessionId)) return;
@@ -218,8 +203,7 @@ export function addStudentToActivity(
   const teacher = getTeacherBySessionId(activity.teacherSessionId);
   teacher?.socket.emit('new student joined', {
     realName,
-    // TODO: Rename this field to sessionId in the frontend contract.
-    socketId: sessionId,
+    sessionId,
   });
 }
 
@@ -250,8 +234,7 @@ export function removeStudentFromActivity(student: Student) {
     removeUnpairedStudentFromActivity(student);
 
     teacher?.socket.emit('unpaired student left', {
-      // TODO: Rename this field to sessionId in the frontend contract.
-      socketId: student.sessionId,
+      sessionId: student.sessionId,
     });
     return;
   }
@@ -303,22 +286,21 @@ export function removeStudentFromActivity(student: Student) {
 export function pairStudents(
   studentPairs: Array<
     [
-      { socketId: SessionId; character: string; realName?: string },
-      { socketId: SessionId; character: string; realName?: string },
+      { sessionId: SessionId; character: string; realName?: string },
+      { sessionId: SessionId; character: string; realName?: string },
     ]
   >,
   teacherSocket: Socket,
 ) {
-  const teacher = getTeacherBySocketId(teacherSocket.id);
+  const teacher = getConnectedTeacher(teacherSocket);
   if (!teacher) return;
 
   const activity = getActivity(teacher.activityPin);
   if (!activity) return;
 
   for (const [tempStudent1, tempStudent2] of studentPairs) {
-    // TODO: Rename incoming socketId fields to sessionId in the frontend contract.
-    const student1 = getStudentBySessionId(tempStudent1.socketId);
-    const student2 = getStudentBySessionId(tempStudent2.socketId);
+    const student1 = getStudentBySessionId(tempStudent1.sessionId);
+    const student2 = getStudentBySessionId(tempStudent2.sessionId);
 
     if (!student1 || !student2) continue;
 
@@ -351,14 +333,12 @@ export function pairStudents(
         {
           realName: student1.realName,
           character: tempStudent1.character,
-          // TODO: Rename this field to sessionId in the frontend contract.
-          socketId: student1.sessionId,
+          sessionId: student1.sessionId,
         },
         {
           realName: student2.realName,
           character: tempStudent2.character,
-          // TODO: Rename this field to sessionId in the frontend contract.
-          socketId: student2.sessionId,
+          sessionId: student2.sessionId,
         },
       ],
     });
@@ -396,14 +376,13 @@ function deleteChat(chatId: ChatId, student1?: Student, student2?: Student) {
 export function unpairStudentChat(
   teacherSocket: Socket,
   chatId: ChatId,
-  student1: { socketId: SessionId },
-  student2: { socketId: SessionId },
+  student1: { sessionId: SessionId },
+  student2: { sessionId: SessionId },
 ) {
   teacherSocket.to(chatId).emit('teacher ended chat', {});
 
-  // TODO: Rename incoming socketId fields to sessionId in the frontend contract.
-  const stud1 = getStudentBySessionId(student1.socketId);
-  const stud2 = getStudentBySessionId(student2.socketId);
+  const stud1 = getStudentBySessionId(student1.sessionId);
+  const stud2 = getStudentBySessionId(student2.sessionId);
 
   if (!stud1 || !stud2) return;
 
@@ -414,7 +393,7 @@ export function unpairStudentChat(
 }
 
 export function studentSendsMessage(message: string, socket: Socket) {
-  const student = getStudentBySocketId(socket.id);
+  const student = getConnectedStudent(socket);
   if (!student?.chatId) return;
 
   const chatId = student.chatId;
@@ -428,8 +407,7 @@ export function studentSendsMessage(message: string, socket: Socket) {
     const teacher = getTeacherBySessionId(activity.teacherSessionId);
     teacher?.socket.emit('teacher listens to student message', {
       message,
-      // TODO: Rename this field to sessionId in the frontend contract.
-      socketId: student.sessionId,
+      sessionId: student.sessionId,
       chatId,
     });
 
@@ -446,25 +424,19 @@ export function studentSendsMessage(message: string, socket: Socket) {
 }
 
 export function sendUserTyping(socket: Socket) {
-  const student = getStudentBySocketId(socket.id);
+  const student = getConnectedStudent(socket);
 
   if (student?.chatId) {
     socket.to(student.chatId).emit('peer is typing');
   }
 }
 
-// TODO: Simplify this helper once sessionId is the only persistent user
-// identifier and socket-based lookup translation is no longer needed.
-export function checkIfStudentIsInsideAnActivity(
-  studentIdentifier: string,
-  identifierType: 'session' | 'socket' = 'session',
-) {
-  const sessionId =
-    identifierType === 'socket'
-      ? socketIdToStudentSessionId[studentIdentifier]
-      : studentIdentifier;
+export function checkIfStudentIsInsideAnActivity(sessionId: SessionId) {
+  return Boolean(studentLookups[sessionId]);
+}
 
-  return Boolean(sessionId && studentLookups[sessionId]);
+export function checkIfConnectedStudentIsInsideAnActivity(socket: Socket) {
+  return Boolean(getConnectedStudent(socket));
 }
 
 export function startSoloMode(
@@ -519,7 +491,7 @@ export async function soloModeStudentSendsMessage(
   message: string,
   studentSocket: Socket,
 ): Promise<SoloChatMessage[]> {
-  const student = getStudentBySocketId(studentSocket.id);
+  const student = getConnectedStudent(studentSocket);
   if (!student?.chatId) return [];
 
   const activity = getActivity(student.activityPin);

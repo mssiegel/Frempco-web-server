@@ -17,14 +17,10 @@ router.get('/:activityPin', (req, res) => {
 });
 
 // @desc      Checks if a student is inside an activity
-// @route     GET /api/v1/activities/:activityPin/studentSocket/:socketId
-// TODO: Rename this route segment to sessionId when the frontend contract changes.
-router.get('/:activityPin/studentSockets/:socketId', (req, res) => {
-  const { socketId } = req.params;
-  const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
-    socketId,
-    'session',
-  );
+// @route     GET /api/v1/activities/:activityPin/students/:sessionId
+router.get('/:activityPin/students/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(sessionId);
   res.status(200).json({ isStudentInsideActivity });
 });
 
