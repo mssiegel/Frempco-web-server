@@ -5,8 +5,10 @@ import errorCatcher from '../utils/errorCatcher.js';
 import {
   addActivity,
   deleteActivity,
-  getTeacher,
-  getStudent,
+  getSessionIdFromSocket,
+  getTeacherBySocketId,
+  getStudentBySocketId,
+  getStudentBySessionId,
   addStudentToActivity,
   removeUnpairedStudentFromActivity,
   removeStudentFromActivity,
@@ -26,11 +28,13 @@ export default function socketIOSetup(server) {
   });
 
   io.on('connect', (socket) => {
+    const getSessionId = () => getSessionIdFromSocket(socket);
+
     const userDisconnected = () => {
-      const teacher = getTeacher(socket.id);
+      const teacher = getTeacherBySocketId(socket.id);
       if (teacher) deleteActivity(teacher);
 
-      const student = getStudent(socket.id);
+      const student = getStudentBySocketId(socket.id);
       if (student) removeStudentFromActivity(student);
     };
     socket.on('disconnect', errorCatcher(userDisconnected));
@@ -54,6 +58,7 @@ export default function socketIOSetup(server) {
     socket.on(
       'pair students',
       errorCatcher(({ studentPairs }) => {
+        // TODO: Rename socketId to sessionId in the frontend contract.
         pairStudents(studentPairs, socket);
       }),
     );
@@ -61,7 +66,8 @@ export default function socketIOSetup(server) {
     socket.on(
       'teacher:removed-unpaired-student-from-activity',
       errorCatcher(({ socketId }) => {
-        const student = getStudent(socketId);
+        // TODO: Rename socketId to sessionId in the frontend contract.
+        const student = getStudentBySessionId(socketId);
         if (student) {
           removeUnpairedStudentFromActivity(student);
           student.socket.emit('student:removed-from-activity');
@@ -72,6 +78,7 @@ export default function socketIOSetup(server) {
     socket.on(
       'unpair student chat',
       errorCatcher(({ chatId, student1, student2 }) => {
+        // TODO: Rename student.socketId payload fields to sessionId in the frontend contract.
         unpairStudentChat(socket, chatId, student1, student2);
       }),
     );
@@ -85,6 +92,7 @@ export default function socketIOSetup(server) {
         // reopens the web app and sends a message.
         const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
           socket.id,
+          'socket',
         );
         if (isStudentInsideActivity) studentSendsMessage(message, socket);
       }),
@@ -102,10 +110,11 @@ export default function socketIOSetup(server) {
     socket.on(
       'solo mode: start chat',
       errorCatcher(({ studentSocketId, characterName }, callback) => {
+        // TODO: Rename studentSocketId to sessionId in the frontend contract.
         const { soloChatId: chatId, messages } = startSoloMode(
           studentSocketId,
           characterName,
-          socket.id,
+          getSessionId(),
         );
         callback({ chatId, messages });
       }),
@@ -117,6 +126,7 @@ export default function socketIOSetup(server) {
       errorCatcher(async ({ message }, callback) => {
         const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
           socket.id,
+          'socket',
         );
 
         // A student is no longer in the server's activity when a student's
@@ -141,7 +151,7 @@ export default function socketIOSetup(server) {
     socket.on(
       'solo mode: end chat',
       errorCatcher(({ chatId }) => {
-        endSoloMode(socket, chatId);
+        endSoloMode(chatId);
       }),
     );
   });

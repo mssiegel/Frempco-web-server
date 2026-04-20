@@ -3,7 +3,7 @@ import express from 'express';
 import {
   getActivity,
   checkIfStudentIsInsideAnActivity,
-  setActivityEmail,
+  setTeacherEmailForActivity,
 } from '../services/database.js';
 
 const router = express.Router();
@@ -18,9 +18,13 @@ router.get('/:activityPin', (req, res) => {
 
 // @desc      Checks if a student is inside an activity
 // @route     GET /api/v1/activities/:activityPin/studentSocket/:socketId
+// TODO: Rename this route segment to sessionId when the frontend contract changes.
 router.get('/:activityPin/studentSockets/:socketId', (req, res) => {
   const { socketId } = req.params;
-  const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(socketId);
+  const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
+    socketId,
+    'session',
+  );
   res.status(200).json({ isStudentInsideActivity });
 });
 
@@ -28,7 +32,7 @@ router.get('/:activityPin/studentSockets/:socketId', (req, res) => {
 // @route     PATCH /api/v1/activities/:activityPin/email/:email
 router.patch('/:activityPin/email/:email', (req, res) => {
   const { activityPin, email } = req.params;
-  setActivityEmail(activityPin, email);
+  setTeacherEmailForActivity(activityPin, email);
   res.sendStatus(200);
 });
 
