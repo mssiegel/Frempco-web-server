@@ -6,8 +6,8 @@ import {
   addActivity,
   deleteActivity,
   getSessionIdFromSocket,
-  getTeacherBySocketId,
-  getStudentBySocketId,
+  getConnectedTeacher,
+  getConnectedStudent,
   getStudentBySessionId,
   addStudentToActivity,
   removeUnpairedStudentFromActivity,
@@ -19,7 +19,7 @@ import {
   startSoloMode,
   soloModeStudentSendsMessage,
   endSoloMode,
-  checkIfStudentIsInsideAnActivity,
+  checkIfConnectedStudentIsInsideAnActivity,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -27,14 +27,27 @@ export default function socketIOSetup(server) {
     cors: corsOptions,
   });
 
+  io.use((socket, next) => {
+    try {
+      socket.data.sessionId = getSessionIdFromSocket(socket);
+      next();
+    } catch (error) {
+      next(
+        error instanceof Error
+          ? error
+          : new Error('Socket connection requires auth.sessionId.'),
+      );
+    }
+  });
+
   io.on('connect', (socket) => {
     const getSessionId = () => getSessionIdFromSocket(socket);
 
     const userDisconnected = () => {
-      const teacher = getTeacherBySocketId(socket.id);
+      const teacher = getConnectedTeacher(socket);
       if (teacher) deleteActivity(teacher);
 
-      const student = getStudentBySocketId(socket.id);
+      const student = getConnectedStudent(socket);
       if (student) removeStudentFromActivity(student);
     };
     socket.on('disconnect', errorCatcher(userDisconnected));
@@ -58,16 +71,14 @@ export default function socketIOSetup(server) {
     socket.on(
       'pair students',
       errorCatcher(({ studentPairs }) => {
-        // TODO: Rename socketId to sessionId in the frontend contract.
         pairStudents(studentPairs, socket);
       }),
     );
 
     socket.on(
       'teacher:removed-unpaired-student-from-activity',
-      errorCatcher(({ socketId }) => {
-        // TODO: Rename socketId to sessionId in the frontend contract.
-        const student = getStudentBySessionId(socketId);
+      errorCatcher(({ sessionId }) => {
+        const student = getStudentBySessionId(sessionId);
         if (student) {
           removeUnpairedStudentFromActivity(student);
           student.socket.emit('student:removed-from-activity');
@@ -78,7 +89,6 @@ export default function socketIOSetup(server) {
     socket.on(
       'unpair student chat',
       errorCatcher(({ chatId, student1, student2 }) => {
-        // TODO: Rename student.socketId payload fields to sessionId in the frontend contract.
         unpairStudentChat(socket, chatId, student1, student2);
       }),
     );
@@ -90,10 +100,8 @@ export default function socketIOSetup(server) {
         // A student is no longer in the server's activity when a student's
         // phone goes dark and the socket disconnects and afterwards the student
         // reopens the web app and sends a message.
-        const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
-          socket.id,
-          'socket',
-        );
+        const isStudentInsideActivity =
+          checkIfConnectedStudentIsInsideAnActivity(socket);
         if (isStudentInsideActivity) studentSendsMessage(message, socket);
       }),
     );
@@ -109,10 +117,9 @@ export default function socketIOSetup(server) {
     // Teacher starts solo mode for a student
     socket.on(
       'solo mode: start chat',
-      errorCatcher(({ studentSocketId, characterName }, callback) => {
-        // TODO: Rename studentSocketId to sessionId in the frontend contract.
+      errorCatcher(({ studentSessionId, characterName }, callback) => {
         const { soloChatId: chatId, messages } = startSoloMode(
-          studentSocketId,
+          studentSessionId,
           characterName,
           getSessionId(),
         );
@@ -124,10 +131,8 @@ export default function socketIOSetup(server) {
     socket.on(
       'solo mode: student sent message',
       errorCatcher(async ({ message }, callback) => {
-        const isStudentInsideActivity = checkIfStudentIsInsideAnActivity(
-          socket.id,
-          'socket',
-        );
+        const isStudentInsideActivity =
+          checkIfConnectedStudentIsInsideAnActivity(socket);
 
         // A student is no longer in the server's activity when a student's
         // phone goes dark and the socket disconnects and afterwards the student
