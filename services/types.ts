@@ -1,63 +1,73 @@
 import { Socket } from 'socket.io';
 
-export interface Activities {
-  [activityPin: string]: {
-    teacherSocketId: SocketId;
-    students: SocketId[];
-    // We track the chats so we can email them to the teacher at the end of class
-    chats: Record<ChatId, StudentChat> | {};
-    soloChats: Record<ChatId, SoloChat> | {};
-    // The teacher's email address which will be sent a copy of all chats.
-    email: string;
-  };
+export type SessionId = string;
+export type SocketId = string;
+export type ActivityPin = string;
+export type ChatId = string;
+
+export type StudentState = 'waiting' | 'paired' | 'solo' | 'ended';
+
+export interface Activity {
+  pin: ActivityPin;
+  teacherSessionId: SessionId;
+  studentSessionIds: SessionId[];
+  pairedChatIds: ChatId[];
+  soloChatIds: ChatId[];
 }
 
-export interface Teachers {
-  [teacherSocketId: SocketId]: {
-    socket: Socket;
-    activityPin: string;
-  };
-}
-
-export interface Students {
-  [studentSocketId: SocketId]: Student;
+export interface Teacher {
+  sessionId: SessionId;
+  socketId: SocketId;
+  socket: Socket;
+  email: string;
+  activityPin: ActivityPin;
+  connected: boolean;
 }
 
 export interface Student {
+  sessionId: SessionId;
+  socketId: SocketId;
   socket: Socket;
-  activityPin: string;
+  activityPin: ActivityPin;
   realName: string;
-  peerSocketId: SocketId | null;
+  connected: boolean;
+  chatId: ChatId | null;
+  state: StudentState;
 }
 
-export interface ChatIds {
-  [socketId: SocketId]: ChatId;
+export interface StudentInChat {
+  sessionId: SessionId;
+  realName: string;
+  character: string;
 }
 
-export interface SoloChatIds {
-  [socketId: SocketId]: ChatId;
+export type ChatMessageAuthor = 'student1' | 'student2' | 'teacher';
+export type SoloChatMessageAuthor = 'student' | 'chatbot' | 'teacher';
+
+export type ChatMessage = [ChatMessageAuthor, string];
+export type SoloChatMessage = [SoloChatMessageAuthor, string];
+
+export interface Chat {
+  chatId: ChatId;
+  studentPair: [StudentInChat, StudentInChat];
+  messages: ChatMessage[];
 }
-
-export type ChatId = 'nanoid#${SocketId}#${SocketId}' | 'nanoid#${SocketId}';
-
-type SocketId = string;
 
 export interface SoloChat {
-  student: StudentId;
+  chatId: ChatId;
+  student: StudentInChat;
   messages: SoloChatMessage[];
   mostRecentStudentMessageId: string | null;
 }
 
-export interface StudentChat {
-  studentPair: [StudentId, StudentId];
-  messages: ChatMessage[];
-}
+export type StudentChat = Chat;
 
-interface StudentId {
-  realName: string;
-  character: string;
-  socketId: SocketId;
-}
+export type ActivityLookups = Record<ActivityPin, Activity>;
+export type TeacherLookups = Record<SessionId, Teacher>;
+export type StudentLookups = Record<SessionId, Student>;
+export type ChatLookups = Record<ChatId, Chat>;
+export type SoloChatLookups = Record<ChatId, SoloChat>;
 
-export type ChatMessage = ['student1' | 'student2' | 'teacher', string];
-export type SoloChatMessage = ['student' | 'chatbot' | 'teacher', string];
+export interface SessionSocketData {
+  sessionId?: SessionId;
+}
