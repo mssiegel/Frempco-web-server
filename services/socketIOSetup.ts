@@ -21,6 +21,7 @@ import {
   endSoloMode,
   studentEndedPairedChat,
   checkIfConnectedStudentIsInsideAnActivity,
+  studentEndedSoloChat,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -99,6 +100,14 @@ export default function socketIOSetup(server) {
       'student:ended-paired-chat',
       errorCatcher(() => {
         studentEndedPairedChat(socket);
+      }),
+    );
+
+    // Student ends a solo chat
+    socket.on(
+      'student:ended-solo-chat',
+      errorCatcher(() => {
+        studentEndedSoloChat(socket);
       }),
     );
 
