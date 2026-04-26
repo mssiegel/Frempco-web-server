@@ -19,6 +19,7 @@ import {
   startSoloMode,
   soloModeStudentSendsMessage,
   endSoloMode,
+  studentEndedPairedChat,
   checkIfConnectedStudentIsInsideAnActivity,
 } from './database.js';
 
@@ -93,16 +94,19 @@ export default function socketIOSetup(server) {
       }),
     );
 
+    // Student ends a paired chat
+    socket.on(
+      'student:ended-paired-chat',
+      errorCatcher(() => {
+        studentEndedPairedChat(socket);
+      }),
+    );
+
     // New chat message sent from one student to their peer
     socket.on(
       'student sent message',
       errorCatcher(({ message }) => {
-        // A student is no longer in the server's activity when a student's
-        // phone goes dark and the socket disconnects and afterwards the student
-        // reopens the web app and sends a message.
-        const isStudentInsideActivity =
-          checkIfConnectedStudentIsInsideAnActivity(socket);
-        if (isStudentInsideActivity) studentSendsMessage(message, socket);
+        studentSendsMessage(message, socket);
       }),
     );
 
