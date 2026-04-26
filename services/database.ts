@@ -31,7 +31,10 @@ const soloChatLookups: SoloChatLookups = {};
 
 export function getSessionIdFromSocket(socket: Socket): SessionId {
   const socketData = socket.data as SessionSocketData;
-  if (typeof socketData.sessionId === 'string' && socketData.sessionId.length > 0) {
+  if (
+    typeof socketData.sessionId === 'string' &&
+    socketData.sessionId.length > 0
+  ) {
     return socketData.sessionId;
   }
 
@@ -90,8 +93,11 @@ function removeStudentFromActivityList(student: Student) {
   }
 }
 
-function getChatPeer(chat: StudentChat, sessionId: SessionId) {
-  return chat.studentPair.find((student) => student.sessionId !== sessionId);
+function getChatPeer(
+  chat: StudentChat | undefined,
+  sessionId: SessionId,
+): StudentInChat | undefined {
+  return chat?.studentPair.find((student) => student.sessionId !== sessionId);
 }
 
 export function getActivity(activityPin: string) {
@@ -262,11 +268,9 @@ export function removeStudentFromActivity(student: Student) {
 
   const chatId = student.chatId;
   const chat = chatId ? chatLookups[chatId] : undefined;
-  const peerParticipant = chat
-    ? getChatPeer(chat, student.sessionId)
-    : undefined;
-  const peerStudent = peerParticipant
-    ? getStudentBySessionId(peerParticipant.sessionId)
+  const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
+  const peerStudent = peerSessionId
+    ? getStudentBySessionId(peerSessionId)
     : undefined;
 
   if (chatId) {
@@ -551,8 +555,6 @@ export function endSoloMode(soloChatId: ChatId) {
 
   const student = getStudentBySessionId(soloChat.student.sessionId);
   if (!student) return;
-  student.chatId = null;
-  student.state = 'ended';
 
   student.socket.emit('solo mode: teacher ended chat', {});
 
@@ -561,4 +563,50 @@ export function endSoloMode(soloChatId: ChatId) {
   // This function does not delete the solo chat from the activity object.
   // This ensures the teacher will get emailed all chats, even those which have
   // already ended.
+}
+
+export function studentEndedPairedChat(socket: Socket) {
+  const student = getConnectedStudent(socket);
+  if (!student || student.state !== 'paired' || !student.chatId) return;
+
+  const activity = getActivity(student.activityPin);
+  const teacher = activity
+    ? getTeacherBySessionId(activity.teacherSessionId)
+    : undefined;
+
+  const chatId = student.chatId;
+  const chat = chatLookups[chatId];
+  const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
+  const peerStudent = peerSessionId
+    ? getStudentBySessionId(peerSessionId)
+    : undefined;
+
+  if (chatId) {
+    student.socket.to(chatId).emit('student:student-peer-ended-chat', {});
+    deleteChat(chatId, student, peerStudent);
+  }
+
+  if (peerStudent) removeUnpairedStudentFromActivity(peerStudent);
+
+  removeUnpairedStudentFromActivity(student);
+
+  teacher?.socket.emit('teacher:student-ended-chat', { chatId });
+}
+
+export function studentEndedSoloChat(socket: Socket) {
+  const student = getConnectedStudent(socket);
+  if (!student || student.state !== 'solo' || !student.chatId) return;
+
+  const activity = getActivity(student.activityPin);
+  const teacher = activity
+    ? getTeacherBySessionId(activity.teacherSessionId)
+    : undefined;
+
+  const chatId = student.chatId;
+
+  removeUnpairedStudentFromActivity(student);
+  // The solo chat record is intentionally left in soloChatLookups so the
+  // teacher still receives it in the end-of-activity email.
+
+  teacher?.socket.emit('teacher:student-ended-chat', { chatId });
 }
