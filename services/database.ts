@@ -127,6 +127,7 @@ export function addActivity(
     studentSessionIds: [],
     pairedChatIds: [],
     soloChatIds: [],
+    shouldRevealStudentRealNames: false,
   };
 }
 
@@ -320,14 +321,20 @@ export function pairStudents(
     student1.state = 'paired';
     student2.state = 'paired';
 
+    const shouldRevealPeerRealName = activity.shouldRevealStudentRealNames;
+
     // exchange names between the two students and start the chat
     student1.socket.emit('chat start', {
       yourCharacter: tempStudent1.character,
       peersCharacter: tempStudent2.character,
+      peerRealName: student2.realName,
+      shouldRevealPeerRealName,
     });
     student2.socket.emit('chat start', {
       yourCharacter: tempStudent2.character,
       peersCharacter: tempStudent1.character,
+      peerRealName: student1.realName,
+      shouldRevealPeerRealName,
     });
 
     // TODO refactor: no need for this event, just start the chat on the teacher's front end immediately.
@@ -357,6 +364,44 @@ export function pairStudents(
     };
     chatLookups[chatId] = studentChat;
     activity.pairedChatIds.push(chatId);
+  }
+}
+
+function emitPeerRealNameRevealToChat(
+  chat: StudentChat,
+  shouldRevealPeerRealName: boolean,
+) {
+  const [student1, student2] = chat.studentPair;
+  const student1Record = getStudentBySessionId(student1.sessionId);
+  const student2Record = getStudentBySessionId(student2.sessionId);
+
+  student1Record?.socket.emit('teacher:set-peer-real-name-reveal', {
+    peerRealName: student2.realName,
+    shouldRevealPeerRealName,
+  });
+  student2Record?.socket.emit('teacher:set-peer-real-name-reveal', {
+    peerRealName: student1.realName,
+    shouldRevealPeerRealName,
+  });
+}
+
+export function setStudentRealNameRevealForActivity(
+  teacherSocket: Socket,
+  shouldRevealStudentRealNames: boolean,
+) {
+  const teacher = getConnectedTeacher(teacherSocket);
+  if (!teacher) return;
+
+  const activity = getActivity(teacher.activityPin);
+  if (!activity) return;
+
+  activity.shouldRevealStudentRealNames = shouldRevealStudentRealNames;
+
+  for (const chatId of activity.pairedChatIds) {
+    const chat = chatLookups[chatId];
+    if (!chat) continue;
+
+    emitPeerRealNameRevealToChat(chat, shouldRevealStudentRealNames);
   }
 }
 

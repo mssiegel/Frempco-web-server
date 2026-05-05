@@ -13,6 +13,7 @@ export interface Activity {
   studentSessionIds: SessionId[];
   pairedChatIds: ChatId[];
   soloChatIds: ChatId[];
+  shouldRevealStudentRealNames: boolean;
 }
 
 export interface Teacher {
