@@ -22,6 +22,7 @@ import {
   studentEndedPairedChat,
   checkIfConnectedStudentIsInsideAnActivity,
   studentEndedSoloChat,
+  setStudentRealNameRevealForActivity,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -74,6 +75,16 @@ export default function socketIOSetup(server) {
       'pair students',
       errorCatcher(({ studentPairs }) => {
         pairStudents(studentPairs, socket);
+      }),
+    );
+
+    socket.on(
+      'teacher:set-real-name-reveal',
+      errorCatcher(({ shouldRevealStudentRealNames }) => {
+        setStudentRealNameRevealForActivity(
+          socket,
+          shouldRevealStudentRealNames,
+        );
       }),
     );
 
