@@ -23,6 +23,7 @@ import {
   checkIfConnectedStudentIsInsideAnActivity,
   studentEndedSoloChat,
   setStudentRealNameRevealForActivity,
+  reconnectPairedStudentIfInGrace,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -44,6 +45,8 @@ export default function socketIOSetup(server) {
   });
 
   io.on('connect', (socket) => {
+    reconnectPairedStudentIfInGrace(socket);
+
     const getSessionId = () => getSessionIdFromSocket(socket);
 
     const userDisconnected = () => {

@@ -34,6 +34,8 @@ export interface Student {
   connected: boolean;
   chatId: ChatId | null;
   state: StudentState;
+  reconnectGraceExpiresAt?: number;
+  reconnectGraceTimer?: ReturnType<typeof setTimeout>;
 }
 
 export interface StudentInChat {
