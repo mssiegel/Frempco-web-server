@@ -24,6 +24,7 @@ import {
   studentEndedSoloChat,
   setStudentRealNameRevealForActivity,
   reconnectPairedStudentIfInGrace,
+  getPairedChatReconnectSnapshot,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -114,6 +115,13 @@ export default function socketIOSetup(server) {
       'student:ended-paired-chat',
       errorCatcher(() => {
         studentEndedPairedChat(socket);
+      }),
+    );
+
+    socket.on(
+      'student:rejoin-paired-chat',
+      errorCatcher((callback) => {
+        callback(getPairedChatReconnectSnapshot(socket));
       }),
     );
 

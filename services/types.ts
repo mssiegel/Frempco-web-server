@@ -44,7 +44,7 @@ export interface StudentInChat {
   character: string;
 }
 
-export type ChatMessageAuthor = 'student1' | 'student2' | 'teacher';
+export type ChatMessageAuthor = 'student1' | 'student2';
 export type SoloChatMessageAuthor = 'student' | 'chatbot' | 'teacher';
 
 export type ChatMessage = [ChatMessageAuthor, string];

@@ -23,12 +23,18 @@ import {
 import { sendEmailOfChats } from './sendEmailOfChats.js';
 import { getChatbotReplyMessages } from './gemini.js';
 
+type StudentClientChatMessage = ['you' | 'peer', string];
+
+interface PairedChatReconnectSnapshot {
+  conversation: StudentClientChatMessage[];
+}
+
 const activities: ActivityLookups = {};
 const teacherLookups: TeacherLookups = {};
 const studentLookups: StudentLookups = {};
 const chatLookups: ChatLookups = {};
 const soloChatLookups: SoloChatLookups = {};
-const PAIRED_CHAT_RECONNECT_GRACE_MS = 120000; // 2 minutes
+const PAIRED_CHAT_RECONNECT_GRACE_MS = 120000;
 
 export function getSessionIdFromSocket(socket: Socket): SessionId {
   const socketData = socket.data as SessionSocketData;
@@ -80,8 +86,8 @@ export function getConnectedStudent(socket: Socket) {
   return student?.socketId === socket.id ? student : undefined;
 }
 
-function clearStudentReconnectGrace(student: Student) {
-  if (!student.reconnectGraceTimer) return;
+function clearStudentReconnectGrace(student: Student | undefined) {
+  if (!student?.reconnectGraceTimer) return;
 
   clearTimeout(student.reconnectGraceTimer);
   student.reconnectGraceTimer = undefined;
@@ -245,6 +251,30 @@ export function reconnectPairedStudentIfInGrace(socket: Socket) {
   clearStudentReconnectGrace(student);
   socket.join(chatId);
   socket.to(chatId).emit('paired-chat:peer-reconnected', {});
+}
+
+export function getPairedChatReconnectSnapshot(
+  socket: Socket,
+): PairedChatReconnectSnapshot | null {
+  const student = getConnectedStudent(socket);
+  if (!student || student.state !== 'paired' || !student.chatId) return null;
+
+  const chat = chatLookups[student.chatId];
+  if (!chat) return null;
+
+  const studentIndex = chat.studentPair.findIndex(
+    (studentInChat) => studentInChat.sessionId === student.sessionId,
+  );
+  if (studentIndex === -1) return null;
+
+  const currentStudentAuthor = studentIndex === 0 ? 'student1' : 'student2';
+
+  return {
+    conversation: chat.messages.map(([author, message]) => [
+      author === currentStudentAuthor ? 'you' : 'peer',
+      message,
+    ]),
+  };
 }
 
 /**

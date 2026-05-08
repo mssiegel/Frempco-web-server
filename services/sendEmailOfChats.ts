@@ -68,9 +68,6 @@ function createHtmlBody(chats: StudentChat[], soloChats: SoloChat[]) {
             character = chat.studentPair[1].character;
             authorTextColor = student2TextColor;
             break;
-          case 'teacher':
-            character = 'TEACHER';
-            authorTextColor = 'purple';
         }
 
         const messageToAdd = `<div style="font-size: 16px;"><span style="color: ${authorTextColor}; font-weight: bold;">${character}: </span>${message}</div>`;
@@ -142,8 +139,6 @@ function createTextBody(chats: StudentChat[], soloChats: SoloChat[]) {
           case 'student2':
             character = chat.studentPair[1].character;
             break;
-          case 'teacher':
-            character = 'TEACHER';
         }
 
         const messageToAdd = `${character}: ${message}\n`;
