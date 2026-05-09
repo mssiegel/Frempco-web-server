@@ -25,6 +25,7 @@ import {
   setStudentRealNameRevealForActivity,
   reconnectPairedStudentIfInGrace,
   getPairedChatReconnectSnapshot,
+  removeStudentFromActivityAfterPageLeave,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -59,6 +60,12 @@ export default function socketIOSetup(server) {
     };
     socket.on('disconnect', errorCatcher(userDisconnected));
     socket.on('user disconnected', errorCatcher(userDisconnected));
+    socket.on(
+      'student:left-page',
+      errorCatcher(() => {
+        removeStudentFromActivityAfterPageLeave(socket);
+      }),
+    );
 
     socket.on(
       'create activity',

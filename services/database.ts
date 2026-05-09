@@ -333,6 +333,65 @@ export function removeStudentFromActivity(student: Student) {
   startPairedChatReconnectGrace(student);
 }
 
+// A student page refresh/navigation is treated as an intentional activity leave.
+// This differs from normal socket disconnects because mobile sleep can also
+// disconnect sockets, and paired chats need reconnect grace in that case.
+// Page leave skips grace and immediately removes/ends the student's activity state.
+export function removeStudentFromActivityAfterPageLeave(socket: Socket) {
+  const student = getConnectedStudent(socket);
+  if (!student) return;
+
+  student.connected = false;
+
+  if (student.state === 'waiting' || !student.chatId) {
+    const activity = getActivity(student.activityPin);
+    const teacher = activity
+      ? getTeacherBySessionId(activity.teacherSessionId)
+      : undefined;
+
+    removeUnpairedStudentFromActivity(student);
+
+    teacher?.socket.emit('unpaired student left', {
+      sessionId: student.sessionId,
+    });
+    return;
+  }
+
+  const activity = getActivity(student.activityPin);
+  const teacher = activity
+    ? getTeacherBySessionId(activity.teacherSessionId)
+    : undefined;
+
+  if (student.state === 'solo') {
+    removeStudentFromActivityList(student);
+
+    teacher?.socket.emit('solo mode: student disconnected', {
+      chatId: student.chatId,
+    });
+
+    student.chatId = null;
+    student.state = 'ended';
+    removeStudentRecord(student);
+    return;
+  }
+
+  const chatId = student.chatId;
+  const chat = chatLookups[chatId];
+  const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
+  const peerStudent = peerSessionId
+    ? getStudentBySessionId(peerSessionId)
+    : undefined;
+
+  peerStudent?.socket.emit('student:student-peer-ended-chat', {});
+  deleteChat(chatId, student, peerStudent);
+
+  if (peerStudent) removeUnpairedStudentFromActivity(peerStudent);
+
+  removeUnpairedStudentFromActivity(student);
+
+  teacher?.socket.emit('teacher:student-ended-chat', { chatId });
+}
+
 function startPairedChatReconnectGrace(student: Student) {
   const chatId = student.chatId;
   const chat = chatId ? chatLookups[chatId] : undefined;
