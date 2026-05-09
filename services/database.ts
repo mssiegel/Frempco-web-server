@@ -256,16 +256,29 @@ export function reconnectPairedStudentIfInGrace(socket: Socket) {
 export function getPairedChatReconnectSnapshot(
   socket: Socket,
 ): PairedChatReconnectSnapshot | null {
-  const student = getConnectedStudent(socket);
+  const sessionId = getSessionIdFromSocket(socket);
+  const student = getStudentBySessionId(sessionId);
   if (!student || student.state !== 'paired' || !student.chatId) return null;
 
-  const chat = chatLookups[student.chatId];
+  const chatId = student.chatId;
+  const chat = chatLookups[chatId];
   if (!chat) return null;
 
   const studentIndex = chat.studentPair.findIndex(
     (studentInChat) => studentInChat.sessionId === student.sessionId,
   );
   if (studentIndex === -1) return null;
+
+  const wasInReconnectGrace = Boolean(student.reconnectGraceTimer);
+  student.socket = socket;
+  student.socketId = socket.id;
+  student.connected = true;
+  clearStudentReconnectGrace(student);
+  socket.join(chatId);
+
+  if (wasInReconnectGrace) {
+    socket.to(chatId).emit('paired-chat:peer-reconnected', {});
+  }
 
   const currentStudentAuthor = studentIndex === 0 ? 'student1' : 'student2';
 
