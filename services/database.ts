@@ -24,9 +24,14 @@ import { sendEmailOfChats } from './sendEmailOfChats.js';
 import { getChatbotReplyMessages } from './gemini.js';
 
 type StudentClientChatMessage = ['you' | 'peer', string];
+type StudentClientSoloChatMessage = ['you' | 'chatbot', string];
 
 interface PairedChatReconnectSnapshot {
   conversation: StudentClientChatMessage[];
+}
+
+interface SoloChatReconnectSnapshot {
+  conversation: StudentClientSoloChatMessage[];
 }
 
 const activities: ActivityLookups = {};
@@ -34,7 +39,7 @@ const teacherLookups: TeacherLookups = {};
 const studentLookups: StudentLookups = {};
 const chatLookups: ChatLookups = {};
 const soloChatLookups: SoloChatLookups = {};
-const PAIRED_CHAT_RECONNECT_GRACE_MS = 120000;
+const CHAT_RECONNECT_GRACE_MS = 120000;
 
 export function getSessionIdFromSocket(socket: Socket): SessionId {
   const socketData = socket.data as SessionSocketData;
@@ -290,6 +295,29 @@ export function getPairedChatReconnectSnapshot(
   };
 }
 
+export function getSoloChatReconnectSnapshot(
+  socket: Socket,
+): SoloChatReconnectSnapshot | null {
+  const sessionId = getSessionIdFromSocket(socket);
+  const student = getStudentBySessionId(sessionId);
+  if (!student || student.state !== 'solo' || !student.chatId) return null;
+
+  const soloChat = soloChatLookups[student.chatId];
+  if (!soloChat) return null;
+
+  student.socket = socket;
+  student.socketId = socket.id;
+  student.connected = true;
+  clearStudentReconnectGrace(student);
+
+  return {
+    conversation: soloChat.messages.map(([author, message]) => [
+      author === 'student' ? 'you' : 'chatbot',
+      message,
+    ]),
+  };
+}
+
 /**
  * Removes a student from an activity when it is known they were not in a
  * paired or solo chat.
@@ -322,24 +350,11 @@ export function removeStudentFromActivity(student: Student) {
     return;
   }
 
-  const activity = getActivity(student.activityPin);
-  const teacher = activity
-    ? getTeacherBySessionId(activity.teacherSessionId)
-    : undefined;
-
   if (student.state === 'solo') {
-    // an activity won't exist if the teacher already left
-    if (activity) {
-      removeStudentFromActivityList(student);
-    }
-
-    teacher?.socket.emit('solo mode: student disconnected', {
-      chatId: student.chatId,
-    });
-
-    student.chatId = null;
-    student.state = 'ended';
-    removeStudentRecord(student);
+    // Solo socket disconnects may be temporary mobile sleep, so keep the
+    // student and transcript active while reconnect grace is active. Refresh
+    // and route navigation use removeStudentFromActivityAfterPageLeave instead.
+    startSoloChatReconnectGrace(student);
     return;
   }
 
@@ -420,7 +435,7 @@ function startPairedChatReconnectGrace(student: Student) {
 
   clearStudentReconnectGrace(student);
 
-  const graceExpiresAt = Date.now() + PAIRED_CHAT_RECONNECT_GRACE_MS;
+  const graceExpiresAt = Date.now() + CHAT_RECONNECT_GRACE_MS;
   peerStudent?.socket.emit('paired-chat:peer-disconnected', {
     graceExpiresAt,
   });
@@ -428,7 +443,39 @@ function startPairedChatReconnectGrace(student: Student) {
   student.reconnectGraceExpiresAt = graceExpiresAt;
   student.reconnectGraceTimer = setTimeout(() => {
     endPairedChatAfterReconnectGraceExpired(chatId, student, peerStudent);
-  }, PAIRED_CHAT_RECONNECT_GRACE_MS);
+  }, CHAT_RECONNECT_GRACE_MS);
+}
+
+function startSoloChatReconnectGrace(student: Student) {
+  const chatId = student.chatId;
+  if (!chatId) return;
+
+  clearStudentReconnectGrace(student);
+
+  student.reconnectGraceTimer = setTimeout(() => {
+    endSoloChatAfterReconnectGraceExpired(chatId, student);
+  }, CHAT_RECONNECT_GRACE_MS);
+}
+
+function endSoloChatAfterReconnectGraceExpired(
+  chatId: ChatId,
+  student: Student,
+) {
+  if (student.chatId !== chatId || student.state !== 'solo') return;
+
+  const activity = getActivity(student.activityPin);
+  const teacher = activity
+    ? getTeacherBySessionId(activity.teacherSessionId)
+    : undefined;
+
+  clearStudentReconnectGrace(student);
+  removeStudentFromActivityList(student);
+
+  student.chatId = null;
+  student.state = 'ended';
+  removeStudentRecord(student);
+
+  teacher?.socket.emit('solo mode: student disconnected', { chatId });
 }
 
 function endPairedChatAfterReconnectGraceExpired(

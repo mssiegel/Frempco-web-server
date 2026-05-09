@@ -25,6 +25,7 @@ import {
   setStudentRealNameRevealForActivity,
   reconnectPairedStudentIfInGrace,
   getPairedChatReconnectSnapshot,
+  getSoloChatReconnectSnapshot,
   removeStudentFromActivityAfterPageLeave,
 } from './database.js';
 
@@ -136,6 +137,13 @@ export default function socketIOSetup(server) {
       'student:rejoin-paired-chat',
       errorCatcher((callback) => {
         callback(getPairedChatReconnectSnapshot(socket));
+      }),
+    );
+
+    socket.on(
+      'student:rejoin-solo-chat',
+      errorCatcher((callback) => {
+        callback(getSoloChatReconnectSnapshot(socket));
       }),
     );
 
