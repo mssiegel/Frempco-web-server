@@ -327,12 +327,12 @@ export function removeStudentFromActivity(student: Student) {
     ? getTeacherBySessionId(activity.teacherSessionId)
     : undefined;
 
-  // an activity won't exist if the teacher already left
-  if (activity) {
-    removeStudentFromActivityList(student);
-  }
-
   if (student.state === 'solo') {
+    // an activity won't exist if the teacher already left
+    if (activity) {
+      removeStudentFromActivityList(student);
+    }
+
     teacher?.socket.emit('solo mode: student disconnected', {
       chatId: student.chatId,
     });
@@ -343,6 +343,9 @@ export function removeStudentFromActivity(student: Student) {
     return;
   }
 
+  // Paired socket disconnects may be temporary mobile sleep, so keep the
+  // student in activity membership while reconnect grace is active. Refresh
+  // and route navigation use removeStudentFromActivityAfterPageLeave instead.
   startPairedChatReconnectGrace(student);
 }
 
