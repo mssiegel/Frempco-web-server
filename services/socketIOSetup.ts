@@ -63,7 +63,14 @@ export default function socketIOSetup(server) {
     socket.on(
       'student:left-page',
       errorCatcher(() => {
-        removeStudentFromActivityAfterPageLeave(socket);
+        removeStudentFromActivityAfterPageLeave(getSessionId());
+      }),
+    );
+
+    socket.on(
+      'student:refreshed-page',
+      errorCatcher(() => {
+        removeStudentFromActivityAfterPageLeave(getSessionId());
       }),
     );
 

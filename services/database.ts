@@ -337,8 +337,8 @@ export function removeStudentFromActivity(student: Student) {
 // This differs from normal socket disconnects because mobile sleep can also
 // disconnect sockets, and paired chats need reconnect grace in that case.
 // Page leave skips grace and immediately removes/ends the student's activity state.
-export function removeStudentFromActivityAfterPageLeave(socket: Socket) {
-  const student = getConnectedStudent(socket);
+export function removeStudentFromActivityAfterPageLeave(sessionId: SessionId) {
+  const student = getStudentBySessionId(sessionId);
   if (!student) return;
 
   student.connected = false;
