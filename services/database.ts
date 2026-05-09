@@ -346,7 +346,7 @@ function startPairedChatReconnectGrace(student: Student) {
   clearStudentReconnectGrace(student);
 
   const graceExpiresAt = Date.now() + PAIRED_CHAT_RECONNECT_GRACE_MS;
-  student.socket.to(chatId).emit('paired-chat:peer-disconnected', {
+  peerStudent?.socket.emit('paired-chat:peer-disconnected', {
     graceExpiresAt,
   });
 
@@ -371,7 +371,7 @@ function endPairedChatAfterReconnectGraceExpired(
   clearStudentReconnectGrace(student);
   clearStudentReconnectGrace(peerStudent);
 
-  student.socket.to(chatId).emit('paired-chat:ended-after-disconnect', {});
+  peerStudent?.socket.emit('paired-chat:ended-after-disconnect', {});
   deleteChat(chatId, student, peerStudent);
 
   if (peerStudent) removeUnpairedStudentFromActivity(peerStudent);
