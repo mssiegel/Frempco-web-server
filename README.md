@@ -22,6 +22,19 @@ Frempco lets teachers pair up classmates for text-based improvised chats. Studen
 3. `npm run dev`
 4. Download the [frontend repo](https://github.com/Frempco/web-client) and run it separately
 
+## Realtime event vocabulary
+
+Client and server socket event constants are intentionally copied because the
+frontend and backend live in separate git repositories. Run
+`npm run check:realtime-events` from this repo after changing socket event names
+to verify:
+
+- server `SERVER_LISTEN_EVENTS` matches client `CLIENT_EMIT_EVENTS`
+- server `SERVER_EMIT_EVENTS` matches client `CLIENT_LISTEN_EVENTS`
+
+By default the script expects the client repo at `../Frempco-web-client`. Set
+`CLIENT_REPO_PATH` when the client repo is checked out somewhere else.
+
 ## Git workflow
 
 - Our production branch is `main`, and our development branch is `dev`

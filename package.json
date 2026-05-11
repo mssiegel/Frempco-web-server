@@ -10,6 +10,7 @@
     "build": "tsc",
     "dev:build": "tsc && node build/index",
     "postinstall": "tsc",
+    "check:realtime-events": "node scripts/check-realtime-event-vocabulary.mjs",
     "lint": "eslint . --fix"
   },
   "author": "Moshe Siegel",
