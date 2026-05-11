@@ -12,17 +12,24 @@ import {
   SessionId,
   SocketId,
   ChatId,
-  ChatLookups,
   StudentChat,
   ChatMessage,
   SoloChat,
-  SoloChatLookups,
   SoloChatMessage,
   SessionSocketData,
   StudentInChat,
 } from './types.js';
 import { sendEmailOfChats } from './sendEmailOfChats.js';
 import { getChatbotReplyMessages } from './gemini.js';
+import {
+  appendPairedChatMessage,
+  appendSoloChatMessages,
+  createPairedChatTranscript,
+  createSoloChatTranscript,
+  getActivityChatTranscripts,
+  getPairedChatTranscript,
+  getSoloChatTranscript,
+} from './chatTranscripts.js';
 
 type StudentClientChatMessage = ['you' | 'peer', string];
 type StudentClientSoloChatMessage = ['you' | 'chatbot', string];
@@ -38,8 +45,6 @@ interface SoloChatReconnectSnapshot {
 const activities: ActivityLookups = {};
 const teacherLookups: TeacherLookups = {};
 const studentLookups: StudentLookups = {};
-const chatLookups: ChatLookups = {};
-const soloChatLookups: SoloChatLookups = {};
 const CHAT_RECONNECT_GRACE_MS = 120000;
 
 export function getSessionIdFromSocket(socket: Socket): SessionId {
@@ -176,17 +181,15 @@ async function emailChatsToTeacher(teacher: Teacher) {
 
   if (!activity) return;
 
-  const chats = activity.pairedChatIds
-    .map((chatId) => chatLookups[chatId])
-    .filter(Boolean);
-  const soloChats = activity.soloChatIds
-    .map((chatId) => soloChatLookups[chatId])
-    .filter(Boolean);
+  const { pairedChats, soloChats } = getActivityChatTranscripts(activity);
 
-  if ((chats.length === 0 && soloChats.length === 0) || teacher.email === '')
+  if (
+    (pairedChats.length === 0 && soloChats.length === 0) ||
+    teacher.email === ''
+  )
     return;
 
-  await sendEmailOfChats(chats, soloChats, teacher.email);
+  await sendEmailOfChats(pairedChats, soloChats, teacher.email);
 }
 
 export function setTeacherEmailForActivity(activityPin: string, email: string) {
@@ -267,7 +270,7 @@ export function getPairedChatReconnectSnapshot(
   if (!student || student.state !== 'paired' || !student.chatId) return null;
 
   const chatId = student.chatId;
-  const chat = chatLookups[chatId];
+  const chat = getPairedChatTranscript(chatId);
   if (!chat) return null;
 
   const studentIndex = chat.studentPair.findIndex(
@@ -305,7 +308,7 @@ export function getSoloChatReconnectSnapshot(
   const student = getStudentBySessionId(sessionId);
   if (!student || student.state !== 'solo' || !student.chatId) return null;
 
-  const soloChat = soloChatLookups[student.chatId];
+  const soloChat = getSoloChatTranscript(student.chatId);
   if (!soloChat) return null;
 
   student.socket = socket;
@@ -413,7 +416,7 @@ export function removeStudentFromActivityAfterPageLeave(sessionId: SessionId) {
   }
 
   const chatId = student.chatId;
-  const chat = chatLookups[chatId];
+  const chat = getPairedChatTranscript(chatId);
   const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
   const peerStudent = peerSessionId
     ? getStudentBySessionId(peerSessionId)
@@ -431,7 +434,7 @@ export function removeStudentFromActivityAfterPageLeave(sessionId: SessionId) {
 
 function startPairedChatReconnectGrace(student: Student) {
   const chatId = student.chatId;
-  const chat = chatId ? chatLookups[chatId] : undefined;
+  const chat = chatId ? getPairedChatTranscript(chatId) : undefined;
   const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
   const peerStudent = peerSessionId
     ? getStudentBySessionId(peerSessionId)
@@ -580,15 +583,10 @@ export function pairStudents(
       ],
     });
 
-    const studentChat: StudentChat = {
-      chatId,
-      studentPair: [
-        getStudentParticipant(student1, tempStudent1.character),
-        getStudentParticipant(student2, tempStudent2.character),
-      ],
-      messages: [],
-    };
-    chatLookups[chatId] = studentChat;
+    createPairedChatTranscript(chatId, [
+      getStudentParticipant(student1, tempStudent1.character),
+      getStudentParticipant(student2, tempStudent2.character),
+    ]);
     activity.pairedChatIds.push(chatId);
   }
 }
@@ -630,7 +628,7 @@ export function setStudentRealNameRevealForActivity(
   activity.shouldRevealStudentRealNames = shouldRevealStudentRealNames;
 
   for (const chatId of activity.pairedChatIds) {
-    const chat = chatLookups[chatId];
+    const chat = getPairedChatTranscript(chatId);
     if (!chat) continue;
 
     emitPeerRealNameRevealToChat(chat, shouldRevealStudentRealNames);
@@ -700,7 +698,7 @@ export function studentSendsMessage(message: string, socket: Socket) {
       },
     );
 
-    const chat = chatLookups[chatId];
+    const chat = getPairedChatTranscript(chatId);
     if (!chat) return;
 
     const messageAuthor =
@@ -708,7 +706,7 @@ export function studentSendsMessage(message: string, socket: Socket) {
         ? 'student1'
         : 'student2';
     const chatMessage: ChatMessage = [messageAuthor, message];
-    chat.messages.push(chatMessage);
+    appendPairedChatMessage(chatId, chatMessage);
   }
 }
 
@@ -751,17 +749,15 @@ export function startSoloMode(
   ] as SoloChatMessage[];
 
   const soloChatId = nanoid(8) as ChatId;
-  const studentChat: SoloChat = {
-    chatId: soloChatId,
-    student: {
+  const studentChat = createSoloChatTranscript(
+    soloChatId,
+    {
       sessionId: student.sessionId,
       realName: student.realName,
       character,
     },
-    messages: chatbotWelcomeMessages,
-    mostRecentStudentMessageId: null,
-  };
-  soloChatLookups[soloChatId] = studentChat;
+    chatbotWelcomeMessages,
+  );
   activity.soloChatIds.push(soloChatId);
   student.chatId = soloChatId;
   student.state = 'solo';
@@ -784,7 +780,7 @@ export async function soloModeStudentSendsMessage(
   if (!student?.chatId) return [];
 
   const activity = getActivity(student.activityPin);
-  const soloChat = soloChatLookups[student.chatId];
+  const soloChat = getSoloChatTranscript(student.chatId);
   if (!soloChat) return [];
 
   sendMessagesToTeacherAndSaveRecordOfIt(activity, soloChat, [
@@ -831,11 +827,11 @@ function sendMessagesToTeacherAndSaveRecordOfIt(
       chatId: soloChat.chatId,
     });
   }
-  soloChat.messages.push(...messages);
+  appendSoloChatMessages(soloChat.chatId, messages);
 }
 
 export function endSoloMode(soloChatId: ChatId) {
-  const soloChat = soloChatLookups[soloChatId];
+  const soloChat = getSoloChatTranscript(soloChatId);
   if (!soloChat) return;
 
   const student = getStudentBySessionId(soloChat.student.sessionId);
@@ -860,7 +856,7 @@ export function studentEndedPairedChat(socket: Socket) {
     : undefined;
 
   const chatId = student.chatId;
-  const chat = chatLookups[chatId];
+  const chat = getPairedChatTranscript(chatId);
   const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
   const peerStudent = peerSessionId
     ? getStudentBySessionId(peerSessionId)
@@ -892,7 +888,7 @@ export function studentEndedSoloChat(socket: Socket) {
   const chatId = student.chatId;
 
   removeUnpairedStudentFromActivity(student);
-  // The solo chat record is intentionally left in soloChatLookups so the
+  // The solo chat transcript is intentionally retained so the
   // teacher still receives it in the end-of-activity email.
 
   teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_ENDED_CHAT, { chatId });
