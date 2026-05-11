@@ -1,6 +1,8 @@
 import { Server } from 'socket.io';
 
 import corsOptions from './corsOptions.js';
+import { SERVER_EMIT_EVENTS } from './emitEvents.const.js';
+import { SERVER_LISTEN_EVENTS } from './listenEvents.const.js';
 import errorCatcher from '../utils/errorCatcher.js';
 import {
   addActivity,
@@ -23,6 +25,10 @@ import {
   checkIfConnectedStudentIsInsideAnActivity,
   studentEndedSoloChat,
   setStudentRealNameRevealForActivity,
+  reconnectPairedStudentIfInGrace,
+  getPairedChatReconnectSnapshot,
+  getSoloChatReconnectSnapshot,
+  removeStudentFromActivityAfterPageLeave,
 } from './database.js';
 
 export default function socketIOSetup(server) {
@@ -44,6 +50,8 @@ export default function socketIOSetup(server) {
   });
 
   io.on('connect', (socket) => {
+    reconnectPairedStudentIfInGrace(socket);
+
     const getSessionId = () => getSessionIdFromSocket(socket);
 
     const userDisconnected = () => {
@@ -54,17 +62,33 @@ export default function socketIOSetup(server) {
       if (student) removeStudentFromActivity(student);
     };
     socket.on('disconnect', errorCatcher(userDisconnected));
-    socket.on('user disconnected', errorCatcher(userDisconnected));
+    socket.on(
+      SERVER_LISTEN_EVENTS.TEACHER_LEAVE_ACTIVITY,
+      errorCatcher(userDisconnected),
+    );
+    socket.on(
+      SERVER_LISTEN_EVENTS.STUDENT_LEFT_PAGE,
+      errorCatcher(() => {
+        removeStudentFromActivityAfterPageLeave(getSessionId());
+      }),
+    );
 
     socket.on(
-      'create activity',
+      SERVER_LISTEN_EVENTS.STUDENT_REFRESHED_PAGE,
+      errorCatcher(() => {
+        removeStudentFromActivityAfterPageLeave(getSessionId());
+      }),
+    );
+
+    socket.on(
+      SERVER_LISTEN_EVENTS.TEACHER_CREATE_ACTIVITY,
       errorCatcher(({ activityPin, email }) => {
         addActivity(activityPin, socket, email);
       }),
     );
 
     socket.on(
-      'new student entered',
+      SERVER_LISTEN_EVENTS.STUDENT_JOIN_ACTIVITY,
       errorCatcher(({ student: realName, activityPin }) => {
         addStudentToActivity(realName, activityPin, socket);
       }),
@@ -72,14 +96,14 @@ export default function socketIOSetup(server) {
 
     // Teacher pairs up their students
     socket.on(
-      'pair students',
+      SERVER_LISTEN_EVENTS.TEACHER_PAIR_STUDENTS,
       errorCatcher(({ studentPairs }) => {
         pairStudents(studentPairs, socket);
       }),
     );
 
     socket.on(
-      'teacher:set-real-name-reveal',
+      SERVER_LISTEN_EVENTS.TEACHER_SET_REAL_NAME_REVEAL,
       errorCatcher(({ shouldRevealStudentRealNames }) => {
         setStudentRealNameRevealForActivity(
           socket,
@@ -89,18 +113,18 @@ export default function socketIOSetup(server) {
     );
 
     socket.on(
-      'teacher:removed-unpaired-student-from-activity',
+      SERVER_LISTEN_EVENTS.TEACHER_REMOVE_UNPAIRED_STUDENT_FROM_ACTIVITY,
       errorCatcher(({ sessionId }) => {
         const student = getStudentBySessionId(sessionId);
         if (student) {
           removeUnpairedStudentFromActivity(student);
-          student.socket.emit('student:removed-from-activity');
+          student.socket.emit(SERVER_EMIT_EVENTS.STUDENT_REMOVED_FROM_ACTIVITY);
         }
       }),
     );
 
     socket.on(
-      'unpair student chat',
+      SERVER_LISTEN_EVENTS.TEACHER_END_PAIRED_CHAT,
       errorCatcher(({ chatId, student1, student2 }) => {
         unpairStudentChat(socket, chatId, student1, student2);
       }),
@@ -108,15 +132,29 @@ export default function socketIOSetup(server) {
 
     // Student ends a paired chat
     socket.on(
-      'student:ended-paired-chat',
+      SERVER_LISTEN_EVENTS.STUDENT_END_PAIRED_CHAT,
       errorCatcher(() => {
         studentEndedPairedChat(socket);
       }),
     );
 
+    socket.on(
+      SERVER_LISTEN_EVENTS.STUDENT_REJOIN_PAIRED_CHAT,
+      errorCatcher((callback) => {
+        callback(getPairedChatReconnectSnapshot(socket));
+      }),
+    );
+
+    socket.on(
+      SERVER_LISTEN_EVENTS.STUDENT_REJOIN_SOLO_CHAT,
+      errorCatcher((callback) => {
+        callback(getSoloChatReconnectSnapshot(socket));
+      }),
+    );
+
     // Student ends a solo chat
     socket.on(
-      'student:ended-solo-chat',
+      SERVER_LISTEN_EVENTS.STUDENT_END_SOLO_CHAT,
       errorCatcher(() => {
         studentEndedSoloChat(socket);
       }),
@@ -124,15 +162,15 @@ export default function socketIOSetup(server) {
 
     // New chat message sent from one student to their peer
     socket.on(
-      'student sent message',
+      SERVER_LISTEN_EVENTS.STUDENT_SEND_PAIRED_MESSAGE,
       errorCatcher(({ message }) => {
         studentSendsMessage(message, socket);
       }),
     );
 
-    // Informs student when their peer is typing
+    // Informs the chat peer about typing activity.
     socket.on(
-      'student typing',
+      SERVER_LISTEN_EVENTS.STUDENT_SEND_TYPING,
       errorCatcher(() => {
         sendUserTyping(socket);
       }),
@@ -140,7 +178,7 @@ export default function socketIOSetup(server) {
 
     // Teacher starts solo mode for a student
     socket.on(
-      'solo mode: start chat',
+      SERVER_LISTEN_EVENTS.TEACHER_START_SOLO_CHAT,
       errorCatcher(({ studentSessionId, characterName }, callback) => {
         const { soloChatId: chatId, messages } = startSoloMode(
           studentSessionId,
@@ -153,7 +191,7 @@ export default function socketIOSetup(server) {
 
     // New chat message sent by a student in solo mode
     socket.on(
-      'solo mode: student sent message',
+      SERVER_LISTEN_EVENTS.STUDENT_SEND_SOLO_MESSAGE,
       errorCatcher(async ({ message }, callback) => {
         const isStudentInsideActivity =
           checkIfConnectedStudentIsInsideAnActivity(socket);
@@ -178,7 +216,7 @@ export default function socketIOSetup(server) {
 
     // Teacher ends solo mode for a student
     socket.on(
-      'solo mode: end chat',
+      SERVER_LISTEN_EVENTS.TEACHER_END_SOLO_CHAT,
       errorCatcher(({ chatId }) => {
         endSoloMode(chatId);
       }),

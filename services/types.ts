@@ -34,6 +34,8 @@ export interface Student {
   connected: boolean;
   chatId: ChatId | null;
   state: StudentState;
+  reconnectGraceExpiresAt?: number;
+  reconnectGraceTimer?: ReturnType<typeof setTimeout>;
 }
 
 export interface StudentInChat {
@@ -42,7 +44,7 @@ export interface StudentInChat {
   character: string;
 }
 
-export type ChatMessageAuthor = 'student1' | 'student2' | 'teacher';
+export type ChatMessageAuthor = 'student1' | 'student2';
 export type SoloChatMessageAuthor = 'student' | 'chatbot' | 'teacher';
 
 export type ChatMessage = [ChatMessageAuthor, string];

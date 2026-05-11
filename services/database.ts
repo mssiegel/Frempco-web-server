@@ -1,6 +1,7 @@
 import { Socket } from 'socket.io';
 import { nanoid } from 'nanoid/non-secure';
 
+import { SERVER_EMIT_EVENTS } from './emitEvents.const.js';
 import {
   ActivityLookups,
   TeacherLookups,
@@ -11,23 +12,40 @@ import {
   SessionId,
   SocketId,
   ChatId,
-  ChatLookups,
   StudentChat,
   ChatMessage,
   SoloChat,
-  SoloChatLookups,
   SoloChatMessage,
   SessionSocketData,
   StudentInChat,
 } from './types.js';
 import { sendEmailOfChats } from './sendEmailOfChats.js';
 import { getChatbotReplyMessages } from './gemini.js';
+import {
+  appendPairedChatMessage,
+  appendSoloChatMessages,
+  createPairedChatTranscript,
+  createSoloChatTranscript,
+  getActivityChatTranscripts,
+  getPairedChatTranscript,
+  getSoloChatTranscript,
+} from './chatTranscripts.js';
+
+type StudentClientChatMessage = ['you' | 'peer', string];
+type StudentClientSoloChatMessage = ['you' | 'chatbot', string];
+
+interface PairedChatReconnectSnapshot {
+  conversation: StudentClientChatMessage[];
+}
+
+interface SoloChatReconnectSnapshot {
+  conversation: StudentClientSoloChatMessage[];
+}
 
 const activities: ActivityLookups = {};
 const teacherLookups: TeacherLookups = {};
 const studentLookups: StudentLookups = {};
-const chatLookups: ChatLookups = {};
-const soloChatLookups: SoloChatLookups = {};
+const CHAT_RECONNECT_GRACE_MS = 120000;
 
 export function getSessionIdFromSocket(socket: Socket): SessionId {
   const socketData = socket.data as SessionSocketData;
@@ -77,6 +95,14 @@ export function getStudentBySessionId(sessionId: SessionId) {
 export function getConnectedStudent(socket: Socket) {
   const student = getStudentBySessionId(getSessionIdFromSocket(socket));
   return student?.socketId === socket.id ? student : undefined;
+}
+
+function clearStudentReconnectGrace(student: Student | undefined) {
+  if (!student?.reconnectGraceTimer) return;
+
+  clearTimeout(student.reconnectGraceTimer);
+  student.reconnectGraceTimer = undefined;
+  student.reconnectGraceExpiresAt = undefined;
 }
 
 function removeStudentRecord(student: Student) {
@@ -155,17 +181,15 @@ async function emailChatsToTeacher(teacher: Teacher) {
 
   if (!activity) return;
 
-  const chats = activity.pairedChatIds
-    .map((chatId) => chatLookups[chatId])
-    .filter(Boolean);
-  const soloChats = activity.soloChatIds
-    .map((chatId) => soloChatLookups[chatId])
-    .filter(Boolean);
+  const { pairedChats, soloChats } = getActivityChatTranscripts(activity);
 
-  if ((chats.length === 0 && soloChats.length === 0) || teacher.email === '')
+  if (
+    (pairedChats.length === 0 && soloChats.length === 0) ||
+    teacher.email === ''
+  )
     return;
 
-  await sendEmailOfChats(chats, soloChats, teacher.email);
+  await sendEmailOfChats(pairedChats, soloChats, teacher.email);
 }
 
 export function setTeacherEmailForActivity(activityPin: string, email: string) {
@@ -208,10 +232,96 @@ export function addStudentToActivity(
 
   // inform teacher
   const teacher = getTeacherBySessionId(activity.teacherSessionId);
-  teacher?.socket.emit('new student joined', {
+  teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_JOINED_ACTIVITY, {
     realName,
     sessionId,
   });
+}
+
+export function reconnectPairedStudentIfInGrace(socket: Socket) {
+  const sessionId = getSessionIdFromSocket(socket);
+  const student = getStudentBySessionId(sessionId);
+
+  if (
+    !student ||
+    student.connected ||
+    student.state !== 'paired' ||
+    !student.chatId ||
+    !student.reconnectGraceTimer
+  ) {
+    return;
+  }
+
+  const chatId = student.chatId;
+
+  student.socket = socket;
+  student.socketId = socket.id;
+  student.connected = true;
+  clearStudentReconnectGrace(student);
+  socket.join(chatId);
+  socket.to(chatId).emit(SERVER_EMIT_EVENTS.PAIRED_CHAT_PEER_RECONNECTED, {});
+}
+
+export function getPairedChatReconnectSnapshot(
+  socket: Socket,
+): PairedChatReconnectSnapshot | null {
+  const sessionId = getSessionIdFromSocket(socket);
+  const student = getStudentBySessionId(sessionId);
+  if (!student || student.state !== 'paired' || !student.chatId) return null;
+
+  const chatId = student.chatId;
+  const chat = getPairedChatTranscript(chatId);
+  if (!chat) return null;
+
+  const studentIndex = chat.studentPair.findIndex(
+    (studentInChat) => studentInChat.sessionId === student.sessionId,
+  );
+  if (studentIndex === -1) return null;
+
+  const wasInReconnectGrace = Boolean(student.reconnectGraceTimer);
+  student.socket = socket;
+  student.socketId = socket.id;
+  student.connected = true;
+  clearStudentReconnectGrace(student);
+  socket.join(chatId);
+
+  if (wasInReconnectGrace) {
+    socket
+      .to(chatId)
+      .emit(SERVER_EMIT_EVENTS.PAIRED_CHAT_PEER_RECONNECTED, {});
+  }
+
+  const currentStudentAuthor = studentIndex === 0 ? 'student1' : 'student2';
+
+  return {
+    conversation: chat.messages.map(([author, message]) => [
+      author === currentStudentAuthor ? 'you' : 'peer',
+      message,
+    ]),
+  };
+}
+
+export function getSoloChatReconnectSnapshot(
+  socket: Socket,
+): SoloChatReconnectSnapshot | null {
+  const sessionId = getSessionIdFromSocket(socket);
+  const student = getStudentBySessionId(sessionId);
+  if (!student || student.state !== 'solo' || !student.chatId) return null;
+
+  const soloChat = getSoloChatTranscript(student.chatId);
+  if (!soloChat) return null;
+
+  student.socket = socket;
+  student.socketId = socket.id;
+  student.connected = true;
+  clearStudentReconnectGrace(student);
+
+  return {
+    conversation: soloChat.messages.map(([author, message]) => [
+      author === 'student' ? 'you' : 'chatbot',
+      message,
+    ]),
+  };
 }
 
 /**
@@ -240,7 +350,45 @@ export function removeStudentFromActivity(student: Student) {
 
     removeUnpairedStudentFromActivity(student);
 
-    teacher?.socket.emit('unpaired student left', {
+    teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_LEFT_ACTIVITY, {
+      sessionId: student.sessionId,
+    });
+    return;
+  }
+
+  if (student.state === 'solo') {
+    // Solo socket disconnects may be temporary mobile sleep, so keep the
+    // student and transcript active while reconnect grace is active. Refresh
+    // and route navigation use removeStudentFromActivityAfterPageLeave instead.
+    startSoloChatReconnectGrace(student);
+    return;
+  }
+
+  // Paired socket disconnects may be temporary mobile sleep, so keep the
+  // student in activity membership while reconnect grace is active. Refresh
+  // and route navigation use removeStudentFromActivityAfterPageLeave instead.
+  startPairedChatReconnectGrace(student);
+}
+
+// A student page refresh/navigation is treated as an intentional activity leave.
+// This differs from normal socket disconnects because mobile sleep can also
+// disconnect sockets, and paired chats need reconnect grace in that case.
+// Page leave skips grace and immediately removes/ends the student's activity state.
+export function removeStudentFromActivityAfterPageLeave(sessionId: SessionId) {
+  const student = getStudentBySessionId(sessionId);
+  if (!student) return;
+
+  student.connected = false;
+
+  if (student.state === 'waiting' || !student.chatId) {
+    const activity = getActivity(student.activityPin);
+    const teacher = activity
+      ? getTeacherBySessionId(activity.teacherSessionId)
+      : undefined;
+
+    removeUnpairedStudentFromActivity(student);
+
+    teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_LEFT_ACTIVITY, {
       sessionId: student.sessionId,
     });
     return;
@@ -251,15 +399,15 @@ export function removeStudentFromActivity(student: Student) {
     ? getTeacherBySessionId(activity.teacherSessionId)
     : undefined;
 
-  // an activity won't exist if the teacher already left
-  if (activity) {
-    removeStudentFromActivityList(student);
-  }
-
   if (student.state === 'solo') {
-    teacher?.socket.emit('solo mode: student disconnected', {
-      chatId: student.chatId,
-    });
+    removeStudentFromActivityList(student);
+
+    teacher?.socket.emit(
+      SERVER_EMIT_EVENTS.STUDENT_DISCONNECTED_FROM_SOLO_CHAT,
+      {
+        chatId: student.chatId,
+      },
+    );
 
     student.chatId = null;
     student.state = 'ended';
@@ -268,24 +416,105 @@ export function removeStudentFromActivity(student: Student) {
   }
 
   const chatId = student.chatId;
-  const chat = chatId ? chatLookups[chatId] : undefined;
+  const chat = getPairedChatTranscript(chatId);
   const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
   const peerStudent = peerSessionId
     ? getStudentBySessionId(peerSessionId)
     : undefined;
 
-  if (chatId) {
-    student.socket.to(chatId).emit('peer left chat', {});
-    deleteChat(chatId, student, peerStudent);
-  }
+  peerStudent?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_PEER_ENDED_CHAT, {});
+  deleteChat(chatId, student, peerStudent);
 
-  if (peerStudent) {
-    removeUnpairedStudentFromActivity(peerStudent);
-  }
+  if (peerStudent) removeUnpairedStudentFromActivity(peerStudent);
 
+  removeUnpairedStudentFromActivity(student);
+
+  teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_ENDED_CHAT, { chatId });
+}
+
+function startPairedChatReconnectGrace(student: Student) {
+  const chatId = student.chatId;
+  const chat = chatId ? getPairedChatTranscript(chatId) : undefined;
+  const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
+  const peerStudent = peerSessionId
+    ? getStudentBySessionId(peerSessionId)
+    : undefined;
+
+  if (!chatId) return;
+
+  clearStudentReconnectGrace(student);
+
+  const graceExpiresAt = Date.now() + CHAT_RECONNECT_GRACE_MS;
+  peerStudent?.socket.emit(SERVER_EMIT_EVENTS.PAIRED_CHAT_PEER_DISCONNECTED, {
+    graceExpiresAt,
+  });
+
+  student.reconnectGraceExpiresAt = graceExpiresAt;
+  student.reconnectGraceTimer = setTimeout(() => {
+    endPairedChatAfterReconnectGraceExpired(chatId, student, peerStudent);
+  }, CHAT_RECONNECT_GRACE_MS);
+}
+
+function startSoloChatReconnectGrace(student: Student) {
+  const chatId = student.chatId;
+  if (!chatId) return;
+
+  clearStudentReconnectGrace(student);
+
+  student.reconnectGraceTimer = setTimeout(() => {
+    endSoloChatAfterReconnectGraceExpired(chatId, student);
+  }, CHAT_RECONNECT_GRACE_MS);
+}
+
+function endSoloChatAfterReconnectGraceExpired(
+  chatId: ChatId,
+  student: Student,
+) {
+  if (student.chatId !== chatId || student.state !== 'solo') return;
+
+  const activity = getActivity(student.activityPin);
+  const teacher = activity
+    ? getTeacherBySessionId(activity.teacherSessionId)
+    : undefined;
+
+  clearStudentReconnectGrace(student);
+  removeStudentFromActivityList(student);
+
+  student.chatId = null;
+  student.state = 'ended';
   removeStudentRecord(student);
 
-  teacher?.socket.emit('chat ended - two students', { chatId });
+  teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_DISCONNECTED_FROM_SOLO_CHAT, {
+    chatId,
+  });
+}
+
+function endPairedChatAfterReconnectGraceExpired(
+  chatId: ChatId,
+  student: Student,
+  peerStudent: Student | undefined,
+) {
+  if (student.chatId !== chatId || student.state !== 'paired') return;
+
+  const activity = getActivity(student.activityPin);
+  const teacher = activity
+    ? getTeacherBySessionId(activity.teacherSessionId)
+    : undefined;
+
+  clearStudentReconnectGrace(student);
+  clearStudentReconnectGrace(peerStudent);
+
+  peerStudent?.socket.emit(
+    SERVER_EMIT_EVENTS.PAIRED_CHAT_ENDED_AFTER_DISCONNECT,
+    {},
+  );
+  deleteChat(chatId, student, peerStudent);
+
+  if (peerStudent) removeUnpairedStudentFromActivity(peerStudent);
+
+  removeUnpairedStudentFromActivity(student);
+
+  teacher?.socket.emit(SERVER_EMIT_EVENTS.PAIRED_CHAT_ENDED, { chatId });
 }
 
 export function pairStudents(
@@ -324,13 +553,13 @@ export function pairStudents(
     const shouldRevealPeerRealName = activity.shouldRevealStudentRealNames;
 
     // exchange names between the two students and start the chat
-    student1.socket.emit('chat start', {
+    student1.socket.emit(SERVER_EMIT_EVENTS.PAIRED_CHAT_STARTED, {
       yourCharacter: tempStudent1.character,
       peersCharacter: tempStudent2.character,
       peerRealName: student2.realName,
       shouldRevealPeerRealName,
     });
-    student2.socket.emit('chat start', {
+    student2.socket.emit(SERVER_EMIT_EVENTS.PAIRED_CHAT_STARTED, {
       yourCharacter: tempStudent2.character,
       peersCharacter: tempStudent1.character,
       peerRealName: student1.realName,
@@ -338,7 +567,7 @@ export function pairStudents(
     });
 
     // TODO refactor: no need for this event, just start the chat on the teacher's front end immediately.
-    teacherSocket.emit('chat started - two students', {
+    teacherSocket.emit(SERVER_EMIT_EVENTS.PAIRED_CHAT_STARTED, {
       chatId,
       studentPair: [
         {
@@ -354,15 +583,10 @@ export function pairStudents(
       ],
     });
 
-    const studentChat: StudentChat = {
-      chatId,
-      studentPair: [
-        getStudentParticipant(student1, tempStudent1.character),
-        getStudentParticipant(student2, tempStudent2.character),
-      ],
-      messages: [],
-    };
-    chatLookups[chatId] = studentChat;
+    createPairedChatTranscript(chatId, [
+      getStudentParticipant(student1, tempStudent1.character),
+      getStudentParticipant(student2, tempStudent2.character),
+    ]);
     activity.pairedChatIds.push(chatId);
   }
 }
@@ -375,14 +599,20 @@ function emitPeerRealNameRevealToChat(
   const student1Record = getStudentBySessionId(student1.sessionId);
   const student2Record = getStudentBySessionId(student2.sessionId);
 
-  student1Record?.socket.emit('teacher:set-peer-real-name-reveal', {
-    peerRealName: student2.realName,
-    shouldRevealPeerRealName,
-  });
-  student2Record?.socket.emit('teacher:set-peer-real-name-reveal', {
-    peerRealName: student1.realName,
-    shouldRevealPeerRealName,
-  });
+  student1Record?.socket.emit(
+    SERVER_EMIT_EVENTS.TEACHER_SET_PEER_REAL_NAME_REVEAL,
+    {
+      peerRealName: student2.realName,
+      shouldRevealPeerRealName,
+    },
+  );
+  student2Record?.socket.emit(
+    SERVER_EMIT_EVENTS.TEACHER_SET_PEER_REAL_NAME_REVEAL,
+    {
+      peerRealName: student1.realName,
+      shouldRevealPeerRealName,
+    },
+  );
 }
 
 export function setStudentRealNameRevealForActivity(
@@ -398,7 +628,7 @@ export function setStudentRealNameRevealForActivity(
   activity.shouldRevealStudentRealNames = shouldRevealStudentRealNames;
 
   for (const chatId of activity.pairedChatIds) {
-    const chat = chatLookups[chatId];
+    const chat = getPairedChatTranscript(chatId);
     if (!chat) continue;
 
     emitPeerRealNameRevealToChat(chat, shouldRevealStudentRealNames);
@@ -408,6 +638,7 @@ export function setStudentRealNameRevealForActivity(
 function clearStudentChatState(student: Student | undefined, chatId: ChatId) {
   if (!student || student.chatId !== chatId) return;
 
+  clearStudentReconnectGrace(student);
   student.socket.leave(chatId);
   student.chatId = null;
   student.state = 'ended';
@@ -428,7 +659,9 @@ export function unpairStudentChat(
   student1: { sessionId: SessionId },
   student2: { sessionId: SessionId },
 ) {
-  teacherSocket.to(chatId).emit('teacher ended chat', {});
+  teacherSocket
+    .to(chatId)
+    .emit(SERVER_EMIT_EVENTS.TEACHER_ENDED_PAIRED_CHAT, {});
 
   const stud1 = getStudentBySessionId(student1.sessionId);
   const stud2 = getStudentBySessionId(student2.sessionId);
@@ -448,19 +681,24 @@ export function studentSendsMessage(message: string, socket: Socket) {
   const chatId = student.chatId;
 
   // send message to other student
-  socket.to(chatId).emit('student sent message', { message });
+  socket.to(chatId).emit(SERVER_EMIT_EVENTS.STUDENT_SENT_PAIRED_MESSAGE, {
+    message,
+  });
   // send message to teacher
   const activity = getActivity(student.activityPin);
   // an activity won't exist if the teacher already left
   if (activity) {
     const teacher = getTeacherBySessionId(activity.teacherSessionId);
-    teacher?.socket.emit('teacher listens to student message', {
-      message,
-      sessionId: student.sessionId,
-      chatId,
-    });
+    teacher?.socket.emit(
+      SERVER_EMIT_EVENTS.STUDENT_SENT_PAIRED_MESSAGE_TO_TEACHER,
+      {
+        message,
+        sessionId: student.sessionId,
+        chatId,
+      },
+    );
 
-    const chat = chatLookups[chatId];
+    const chat = getPairedChatTranscript(chatId);
     if (!chat) return;
 
     const messageAuthor =
@@ -468,7 +706,7 @@ export function studentSendsMessage(message: string, socket: Socket) {
         ? 'student1'
         : 'student2';
     const chatMessage: ChatMessage = [messageAuthor, message];
-    chat.messages.push(chatMessage);
+    appendPairedChatMessage(chatId, chatMessage);
   }
 }
 
@@ -476,7 +714,7 @@ export function sendUserTyping(socket: Socket) {
   const student = getConnectedStudent(socket);
 
   if (student?.chatId) {
-    socket.to(student.chatId).emit('peer is typing');
+    socket.to(student.chatId).emit(SERVER_EMIT_EVENTS.PEER_TYPING);
   }
 }
 
@@ -511,24 +749,22 @@ export function startSoloMode(
   ] as SoloChatMessage[];
 
   const soloChatId = nanoid(8) as ChatId;
-  const studentChat: SoloChat = {
-    chatId: soloChatId,
-    student: {
+  const studentChat = createSoloChatTranscript(
+    soloChatId,
+    {
       sessionId: student.sessionId,
       realName: student.realName,
       character,
     },
-    messages: chatbotWelcomeMessages,
-    mostRecentStudentMessageId: null,
-  };
-  soloChatLookups[soloChatId] = studentChat;
+    chatbotWelcomeMessages,
+  );
   activity.soloChatIds.push(soloChatId);
   student.chatId = soloChatId;
   student.state = 'solo';
   student.connected = true;
 
   // Inform the student
-  student.socket.emit('solo mode: chat started', {
+  student.socket.emit(SERVER_EMIT_EVENTS.TEACHER_STARTED_SOLO_CHAT, {
     character,
     messages: chatbotWelcomeMessages,
   });
@@ -544,7 +780,7 @@ export async function soloModeStudentSendsMessage(
   if (!student?.chatId) return [];
 
   const activity = getActivity(student.activityPin);
-  const soloChat = soloChatLookups[student.chatId];
+  const soloChat = getSoloChatTranscript(student.chatId);
   if (!soloChat) return [];
 
   sendMessagesToTeacherAndSaveRecordOfIt(activity, soloChat, [
@@ -586,22 +822,22 @@ function sendMessagesToTeacherAndSaveRecordOfIt(
 ) {
   if (activity) {
     const teacher = getTeacherBySessionId(activity.teacherSessionId);
-    teacher?.socket.emit('solo mode: teacher listens to new message', {
+    teacher?.socket.emit(SERVER_EMIT_EVENTS.SOLO_CHAT_MESSAGES_ADDED, {
       messages,
       chatId: soloChat.chatId,
     });
   }
-  soloChat.messages.push(...messages);
+  appendSoloChatMessages(soloChat.chatId, messages);
 }
 
 export function endSoloMode(soloChatId: ChatId) {
-  const soloChat = soloChatLookups[soloChatId];
+  const soloChat = getSoloChatTranscript(soloChatId);
   if (!soloChat) return;
 
   const student = getStudentBySessionId(soloChat.student.sessionId);
   if (!student) return;
 
-  student.socket.emit('solo mode: teacher ended chat', {});
+  student.socket.emit(SERVER_EMIT_EVENTS.TEACHER_ENDED_SOLO_CHAT, {});
 
   removeUnpairedStudentFromActivity(student);
 
@@ -620,14 +856,16 @@ export function studentEndedPairedChat(socket: Socket) {
     : undefined;
 
   const chatId = student.chatId;
-  const chat = chatLookups[chatId];
+  const chat = getPairedChatTranscript(chatId);
   const peerSessionId = getChatPeer(chat, student.sessionId)?.sessionId;
   const peerStudent = peerSessionId
     ? getStudentBySessionId(peerSessionId)
     : undefined;
 
   if (chatId) {
-    student.socket.to(chatId).emit('student:student-peer-ended-chat', {});
+    student.socket
+      .to(chatId)
+      .emit(SERVER_EMIT_EVENTS.STUDENT_PEER_ENDED_CHAT, {});
     deleteChat(chatId, student, peerStudent);
   }
 
@@ -635,7 +873,7 @@ export function studentEndedPairedChat(socket: Socket) {
 
   removeUnpairedStudentFromActivity(student);
 
-  teacher?.socket.emit('teacher:student-ended-chat', { chatId });
+  teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_ENDED_CHAT, { chatId });
 }
 
 export function studentEndedSoloChat(socket: Socket) {
@@ -650,8 +888,8 @@ export function studentEndedSoloChat(socket: Socket) {
   const chatId = student.chatId;
 
   removeUnpairedStudentFromActivity(student);
-  // The solo chat record is intentionally left in soloChatLookups so the
+  // The solo chat transcript is intentionally retained so the
   // teacher still receives it in the end-of-activity email.
 
-  teacher?.socket.emit('teacher:student-ended-chat', { chatId });
+  teacher?.socket.emit(SERVER_EMIT_EVENTS.STUDENT_ENDED_CHAT, { chatId });
 }
